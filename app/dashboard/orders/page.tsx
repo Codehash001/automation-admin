@@ -90,23 +90,21 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="space-y-6 h-full flex flex-col">
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
       </div>
       
-      <Card>
-        <CardHeader>
+      <Card className="flex-1 flex flex-col">
+        <CardHeader className="border-b">
           <CardTitle>Recent Orders</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <DataTable 
-              columns={columns} 
-              data={orders} 
-              onStatusUpdate={handleStatusUpdate}
-            />
-          </div>
+        <CardContent className="flex-1 p-0">
+          <DataTable 
+            columns={columns} 
+            data={orders} 
+            onStatusUpdate={handleStatusUpdate} 
+          />
         </CardContent>
       </Card>
     </div>

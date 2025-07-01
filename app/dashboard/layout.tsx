@@ -83,13 +83,13 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-gray-50">
-      {/* Sidebar */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
+      {/* Fixed Sidebar */}
+      <div className="w-64 bg-white border-r border-gray-200 flex flex-col h-screen fixed left-0 top-0">
         <div className="p-4 border-b border-gray-200">
           <h1 className="text-xl font-bold text-gray-800">Admin Panel</h1>
         </div>
-        <nav className="flex-1 overflow-y-auto p-4">
-          <ul className="space-y-2">
+        <nav className="flex-1 overflow-y-auto">
+          <ul className="p-4 space-y-2">
             {menuItems.map((item) => (
               <li key={item.name}>
                 {item.children ? (
@@ -149,13 +149,11 @@ export default function DashboardLayout({
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col ml-64 h-screen">
         {/* Top navigation */}
-        <header className="bg-white shadow-sm z-10">
-        </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        <main className="flex-1 p-6">
           {children}
           <Toaster />
         </main>
