@@ -94,7 +94,7 @@ export async function DELETE(request: Request) {
     // First update any deliveries to remove the driver reference
     await prisma.delivery.updateMany({
       where: { driverId: parseInt(id) },
-      data: { driverId: null },
+      data: { driverId: 1 },
     });
 
     // Then delete the driver

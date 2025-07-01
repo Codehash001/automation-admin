@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     if (status === 'DELIVERED') {
       await prisma.order.update({
         where: { id: parseInt(orderId) },
-        data: { status: 'DELIVERED' }
+        data: { status: 'COMPLETED' }
       });
     }
 
@@ -128,7 +128,7 @@ export async function PUT(request: Request) {
     if (data.status === 'DELIVERED') {
       await prisma.order.update({
         where: { id: updatedDelivery.orderId },
-        data: { status: 'DELIVERED' }
+        data: { status: 'COMPLETED' }
       });
     }
     
