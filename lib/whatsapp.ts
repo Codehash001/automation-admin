@@ -66,6 +66,9 @@ const formatPhoneNumber = (phone: string): string => {
   return cleaned;
 };
 
+// Helper function to add delay
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export async function sendOrderNotificationToOutlet(orderId: number): Promise<boolean> {
   try {
     // Get order details with customer and outlet information
@@ -95,7 +98,7 @@ export async function sendOrderNotificationToOutlet(orderId: number): Promise<bo
 
     // Format order items
     const itemsList = order.items
-      .map(item => `• ${item.quantity}x ${item.menuItem.name} - $${item.price.toFixed(2)}`)
+      .map(item => `• ${item.quantity}x ${item.menuItem.name} - $${Number(item.price).toFixed(2)}`)
       .join('\n');
 
     // Calculate subtotal
@@ -113,39 +116,50 @@ export async function sendOrderNotificationToOutlet(orderId: number): Promise<bo
 ${itemsList}
 
 💵 *Subtotal*: $${subtotal.toFixed(2)}
-🛵 *Delivery Fee*: $${order.deliveryFee.toFixed(2)}
-💳 *Total*: $${order.total.toFixed(2)}
+🛵 *Delivery Fee*: $${Number(order.deliveryFee).toFixed(2)}
+💳 *Total*: $${Number(order.total).toFixed(2)}
 
 📍 *Delivery Address*: ${order.deliveryAddress || 'N/A'}
 🏢 *Building Type*: ${order.buildingType || 'Not specified'}
 📝 *Note*: ${order.note || 'No notes'}
     `.trim();
 
-    // Send the order details message
-    await twilioClient.messages.create({
-      body: orderMessage,
-      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
-      to: `whatsapp:${outletNumber}`
-    });
+    try {
+      // Send the order details message
+      console.log(`[WhatsApp] Sending order details for order #${order.id} to ${outletNumber}`);
+      await twilioClient.messages.create({
+        body: orderMessage,
+        from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
+        to: `whatsapp:${outletNumber}`
+      });
+      console.log(`[WhatsApp] Order details sent successfully for order #${order.id}`);
+      
+      // Add a small delay before sending the next message
+      await delay(1000);
 
-    // If there's a delivery location, send it as a separate message
-    if (order.deliveryLocation) {
-      try {
-        const [lat, lng] = order.deliveryLocation.split(',').map(Number);
-        await twilioClient.messages.create({
-          body: `📍 *Delivery Location for Order #${order.id}*`,
-          from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
-          to: `whatsapp:${outletNumber}`,
-          persistentAction: [`geo:${lat},${lng}|${order.deliveryAddress || 'Delivery Location'}`]
-        });
-      } catch (locationError) {
-        console.error('Error sending location:', locationError);
-        // Continue even if location fails
+      // If there's a delivery location, send it as a separate message
+      if (order.deliveryLocation) {
+        try {
+          console.log(`[WhatsApp] Sending location for order #${order.id}`);
+          const [lat, lng] = order.deliveryLocation.split(',').map(Number);
+          await twilioClient.messages.create({
+            body: `📍 *Delivery Location for Order #${order.id}*`,
+            from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
+            to: `whatsapp:${outletNumber}`,
+            persistentAction: [`geo:${lat},${lng}|${order.deliveryAddress || 'Delivery Location'}`]
+          });
+          console.log(`[WhatsApp] Location sent successfully for order #${order.id}`);
+          
+          // Add a small delay before sending the action message
+          await delay(1000);
+        } catch (locationError) {
+          console.error(`[WhatsApp] Error sending location for order #${order.id}:`, locationError);
+          // Continue even if location fails
+        }
       }
-    }
 
-    // Send the action message after the location
-    const actionMessage = `
+      // Send the action message after the location
+      const actionMessage = `
 📝 *How would you like to proceed with Order #${order.id}?*
 
 Please reply with the number of your choice:
@@ -153,17 +167,34 @@ Please reply with the number of your choice:
 2️⃣ *2* - Decline Order
 
 Example: Reply with "1" to accept or "2" to decline.
-    `.trim();
+      `.trim();
 
-    await twilioClient.messages.create({
-      body: actionMessage,
-      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
-      to: `whatsapp:${outletNumber}`
-    });
+      console.log(`[WhatsApp] Sending action message for order #${order.id}`);
+      const actionMessageResponse = await twilioClient.messages.create({
+        body: actionMessage,
+        from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
+        to: `whatsapp:${outletNumber}`
+      });
+      
+      console.log(`[WhatsApp] Action message sent successfully for order #${order.id}`, {
+        messageSid: actionMessageResponse.sid,
+        status: actionMessageResponse.status
+      });
 
-    return true;
+      return true;
+      
+    } catch (error: any) {
+      console.error(`[WhatsApp] Error sending messages for order #${order.id}:`, {
+        error: error.message,
+        code: error.code,
+        status: error.status,
+        moreInfo: error.moreInfo
+      });
+      return false;
+    }
+    
   } catch (error) {
-    console.error('Error sending WhatsApp message via Twilio:', error);
+    console.error('[WhatsApp] Error in sendOrderNotificationToOutlet:', error);
     return false;
   }
 }
