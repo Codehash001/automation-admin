@@ -1,0 +1,200 @@
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // or mysql, sqlite
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id             Int       @id @default(autoincrement())
+  name           String
+  whatsappNumber String    @unique
+  orders         Order[]
+  createdAt      DateTime  @default(now())
+}
+
+model Emirates {
+  id          Int              @id @default(autoincrement())
+  name        String           @unique
+  outlets     Outlet[]
+  orders      Order[]
+  drivers     DriverEmirate[]
+}
+
+model Cuisine {
+  id      Int            @id @default(autoincrement())
+  name    String         @unique
+  outlets OutletCuisine[]
+  menus   Menu[]
+}
+
+model Outlet {
+  id           Int             @id @default(autoincrement())
+  name         String
+  emirates     Emirates        @relation(fields: [emiratesId], references: [id])
+  emiratesId   Int
+  whatsappNo   String
+  status       OutletStatus
+  menus        Menu[]
+  orders       Order[]
+  cuisines     OutletCuisine[]
+}
+
+model OutletCuisine {
+  outlet      Outlet   @relation(fields: [outletId], references: [id])
+  outletId    Int
+  cuisine     Cuisine  @relation(fields: [cuisineId], references: [id])
+  cuisineId   Int
+  assignedAt  DateTime @default(now())
+
+
+  @@id([outletId, cuisineId])
+}
+
+model Menu {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  outlet      Outlet    @relation(fields: [outletId], references: [id])
+  outletId    Int
+  cuisine     Cuisine?  @relation(fields: [cuisineId], references: [id])
+  cuisineId   Int?
+  isActive    Boolean   @default(true)
+  items       MenuItem[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([outletId, cuisineId, name]) // Ensure unique menu names per outlet/cuisine
+}
+
+model MenuItem {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  price       Decimal   @db.Decimal(10, 2)
+  imageUrl    String?
+  isAvailable Boolean   @default(true)
+  menu        Menu      @relation(fields: [menuId], references: [id])
+  menuId      Int
+  orderItems  OrderItem[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Order {
+  id              Int         @id @default(autoincrement())
+  customer        Customer    @relation(fields: [customerId], references: [id])
+  customerId      Int
+  emirates        Emirates    @relation(fields: [emiratesId], references: [id])
+  emiratesId      Int
+  orderType       String      // Can be 'Delivery', 'Self Pick-up', or 'Appointment'
+  category        String      // Food, Medicine, Grocery, etc.
+  outlet          Outlet      @relation(fields: [outletId], references: [id])
+  outletId        Int
+  deliveryAddress String?
+  deliveryLocation String?    // Store as "lat,lng" string (e.g., "6.8221635818481,80.042129516602")
+  buildingType    String?     // Apartment/Villa
+  paymentMethod   PaymentMethod
+  note            String?
+  status          OrderStatus @default(PENDING)
+  statusReason    String?     // Reason for status change (e.g., decline reason)
+  subtotal        Decimal     @db.Decimal(10, 2)
+  serviceFee      Decimal     @db.Decimal(10, 2)
+  deliveryFee     Decimal     @db.Decimal(10, 2)
+  vat             Decimal     @db.Decimal(10, 2)
+  total           Decimal     @db.Decimal(10, 2)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  items           OrderItem[]
+  delivery        Delivery?
+  rating          Rating?
+}
+
+model OrderItem {
+  id          Int       @id @default(autoincrement())
+  order       Order     @relation(fields: [orderId], references: [id])
+  orderId     Int
+  menuItem    MenuItem  @relation(fields: [menuItemId], references: [id])
+  menuItemId  Int
+  quantity    Int
+  price       Decimal   @db.Decimal(10, 2)
+}
+
+model Driver {
+  id          Int         @id @default(autoincrement())
+  name        String
+  phone       String      @unique
+  available   Boolean     @default(true)
+  emirates    DriverEmirate[]
+  deliveries  Delivery[]
+}
+
+model DriverEmirate {
+  driver     Driver   @relation(fields: [driverId], references: [id])
+  driverId   Int
+  emirate    Emirates @relation(fields: [emirateId], references: [id])
+  emirateId  Int
+
+  @@id([driverId, emirateId])
+}
+
+model Delivery {
+  id        Int      @id @default(autoincrement())
+  order     Order    @relation(fields: [orderId], references: [id])
+  orderId   Int      @unique
+  driver    Driver   @relation(fields: [driverId], references: [id])
+  driverId  Int
+  status    String   // e.g., PENDING, IN_TRANSIT, DELIVERED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Rating {
+  id        Int      @id @default(autoincrement())
+  order     Order    @relation(fields: [orderId], references: [id])
+  orderId   Int      @unique
+  rating    Int      // 1–5
+  feedback  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum DeliveryStatus {
+  ACCEPTED
+  REJECTED
+  DELIVERED
+}
+
+enum OrderStatus {
+  PENDING     // Order just created
+  PREPARING   // Outlet accepted and preparing the order
+  READY       // Order is ready for pickup/delivery
+  COMPLETED   // Order successfully delivered/picked up
+  CANCELLED   // Order was cancelled
+  DECLINED    // Outlet declined the order
+}
+
+enum PaymentMethod {
+  COD
+  POS
+}
+
+enum OutletStatus {
+  OPEN
+  BUSY
+  CLOSED
+}
+
+model AdditionalPrice {
+  id            Int      @id @default(autoincrement())
+  name          String   @unique
+  value         Decimal  @db.Decimal(10, 5)
+  type          String   // 'percentage' or 'fixed'
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
