@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { sendOrderNotificationToOutlet } from '@/lib/whatsapp';
 
 // Helper function to parse the text items into structured data
 function parseItems(textItems: string) {
@@ -56,6 +55,83 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
     vat: parseFloat(vat.toFixed(2)),
     total: parseFloat(total.toFixed(2))
   };
+}
+
+// Generate markdown formatted order message with better formatting
+function generateOrderMessage(order: any) {
+  // Group items by name and sum quantities
+  const groupedItems = order.items.reduce((acc: any, item: any) => {
+    const key = `${item.menuItem.name}-${item.price}`;
+    if (!acc[key]) {
+      acc[key] = {
+        name: item.menuItem.name,
+        price: item.price,
+        quantity: 0,
+        total: 0
+      };
+    }
+    acc[key].quantity += item.quantity;
+    acc[key].total += item.price * item.quantity;
+    return acc;
+  }, {});
+
+  // Convert to array and format each line
+  const itemsList = Object.values(groupedItems).map((item: any) => {
+    const itemName = item.name.padEnd(25, ' ').substring(0, 25);
+    const itemQty = `${item.quantity}x`.padStart(5, ' ');
+    const itemPrice = `${item.price.toFixed(2)}`.padStart(7, ' ');
+    const itemTotal = item.total.toFixed(2).padStart(8, ' ');
+    return `${itemName} ${itemQty} @ ${itemPrice} = ${itemTotal} AED`;
+  }).join('\n');
+
+  // Format the order details
+  const formatLine = (label: string, value: string | number, isBold = false) => {
+    const formattedValue = typeof value === 'number' ? value.toFixed(2) + ' AED' : value;
+    const line = `${label}:`.padEnd(20, ' ') + formattedValue;
+    return isBold ? `*${line}*` : line;
+  };
+
+  // Get current UAE time
+  const uaeTime = new Date().toLocaleString('en-AE', { 
+    timeZone: 'Asia/Dubai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
+
+  // Build the message
+  return `
+╔══════════════════════════════════════╗
+║            🛒 ORDER #${order.id.toString().padEnd(8, ' ')}         ║
+╚══════════════════════════════════════╝
+
+` +
+    `📅 ${uaeTime}\n\n` +
+    `👤 *CUSTOMER DETAILS*\n` +
+    `${'-'.repeat(40)}\n` +
+    `${formatLine('Name', order.customer.name)}\n` +
+    `${formatLine('Location', order.deliveryLocation || 'N/A')}\n` +
+    `${formatLine('Building', order.buildingType || 'N/A')}\n` +
+    `${formatLine('Address', order.deliveryAddress || 'N/A')}\n\n` +
+    `🛒 *ORDER ITEMS*\n` +
+    `${'-'.repeat(40)}\n` +
+    `${itemsList}\n\n` +
+    `� *PAYMENT SUMMARY*\n` +
+    `${'-'.repeat(40)}\n` +
+    `${formatLine('Subtotal', order.subtotal)}\n` +
+    `${formatLine('Delivery Fee', order.deliveryFee)}\n` +
+    `${formatLine('Service Fee', order.serviceFee)}\n` +
+    `${formatLine('VAT (5%)', order.vat)}\n` +
+    `${'-'.repeat(40)}\n` +
+    `${formatLine('TOTAL', order.total, true)}\n\n` +
+    `📝 *NOTES*\n` +
+    `${'-'.repeat(40)}\n` +
+    `${order.note || 'No additional notes'}\n\n` +
+    `Thank you for your order! 🙏`;
 }
 
 export async function POST(request: Request) {
@@ -180,27 +256,20 @@ export async function POST(request: Request) {
 
     console.log(`[ManyChats] Transaction completed for order ${order.id}`);
 
-    // Send WhatsApp notification in the background
-    console.log(`[ManyChats] Initiating WhatsApp notification for order ${order.id}`);
-    sendOrderNotificationToOutlet(order.id)
-      .then(success => {
-        if (success) {
-          console.log(`[ManyChats] WhatsApp notification sent successfully for order ${order.id}`);
-        } else {
-          console.error(`[ManyChats] Failed to send WhatsApp notification for order ${order.id}`);
-        }
-      })
-      .catch(error => {
-        console.error(`[ManyChats] Error sending WhatsApp notification for order ${order.id}:`, error);
-      });
+    // Generate and log the order details in markdown format
+    const orderMessage = generateOrderMessage(order);
+    console.log('\n--- ORDER DETAILS ---\n', orderMessage, '\n-------------------\n');
 
-    // Return the created order
+    // Return the created order with markdown message
     console.log(`[ManyChats] Order ${order.id} created successfully`);
     return NextResponse.json({
       success: true,
-      orderId: order.id,
-      total,
-      status: 'PENDING'
+      order: {
+        id: order.id,
+        markdownMessage: orderMessage,
+        total: order.total,
+        status: 'PENDING'
+      }
     });
 
   } catch (error) {

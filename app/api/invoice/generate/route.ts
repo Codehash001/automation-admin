@@ -1,12 +1,5 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import twilio from 'twilio';
-
-// Initialize Twilio client
-const twilioClient = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
 
 interface ProcessedItem {
   menuItemId: string;
@@ -78,6 +71,23 @@ function parseItemsString(itemsString: string): ProcessedItem[] {
   }).filter(Boolean) as ProcessedItem[]; // Filter out any null items
 }
 
+// Helper function to combine duplicate items by name
+function combineDuplicateItems(items: ProcessedItem[]): ProcessedItem[] {
+  const itemMap = new Map<string, ProcessedItem>();
+  
+  items.forEach(item => {
+    const existingItem = itemMap.get(item.name);
+    if (existingItem) {
+      existingItem.quantity += item.quantity;
+      existingItem.total = Number((existingItem.price * existingItem.quantity).toFixed(2));
+    } else {
+      itemMap.set(item.name, { ...item });
+    }
+  });
+  
+  return Array.from(itemMap.values());
+}
+
 // Helper function to format currency
 const formatCurrency = (amount: number): string => {
   return amount.toFixed(2) + ' AED';
@@ -124,6 +134,9 @@ export async function POST(request: Request) {
         return [];
       });
     }
+
+    // Combine duplicate items before processing
+    processedItems = combineDuplicateItems(processedItems);
 
     // Validate we have at least one valid item
     if (processedItems.length === 0) {
@@ -181,34 +194,67 @@ export async function POST(request: Request) {
     
     const total = Number((subtotal + totalFees).toFixed(2));
 
-    // Build the invoice message
-    let message = `*🛍️ Order Invoice*\n`;
-    message += `Order Type: *${orderType}*\n\n`;
+    // Get current date and time in UAE timezone
+    const uaeTime = new Date().toLocaleString('en-AE', { 
+      timeZone: 'Asia/Dubai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    });
+
+    // Build the invoice message with better formatting
+    let message = `╔══════════════════════════╗\n`;
+    message += `║        🛍️ INVOICE         ║\n`;
+    message += `╚══════════════════════════╝\n\n`;
     
-    // Add items
-    message += '*Items:*\n';
+    message += `Order Type: *${orderType}*\n`;
+    message += `Date: ${uaeTime}\n\n`;
+    
+    // Add items with better formatting
+    message += `╔══════════════════════════════════════╗\n`;
+    message += `║               ITEMS                  ║\n`;
+    message += `╠══════════════════════════╦══════════╣\n`;
+    
     processedItems.forEach(item => {
-      message += `• ${item.name} (${item.quantity}x ${formatCurrency(item.price)})\n`;
+      const itemName = item.name.padEnd(25, ' ').substring(0, 25);
+      const itemQty = `${item.quantity}x`.padStart(5, ' ');
+      const itemTotal = formatCurrency(item.total).padStart(10, ' ');
+      message += `║ ${itemName} ${itemQty} ${itemTotal} ║\n`;
     });
     
+    message += `╠══════════════════════════╩══════════╣\n`;
+    
     // Add subtotal
-    message += `\n*Subtotal:* ${formatCurrency(subtotal)}\n`;
+    const subtotalStr = formatCurrency(subtotal).padStart(10, ' ');
+    message += `║ Subtotal:${' '.repeat(18)}${subtotalStr} ║\n`;
     
     // Add fees
     const applicableFees = fees.filter(fee => fee.applicable && fee.amount > 0);
     if (applicableFees.length > 0) {
-      message += '\n*Additional Fees:*\n';
+      message += `╠══════════════════════════════════════╣\n`;
+      message += `║           ADDITIONAL FEES             ║\n`;
+      message += `╠══════════════════════════════════════╣\n`;
+      
       applicableFees.forEach(fee => {
-        message += `• ${fee.name}: ${formatCurrency(fee.amount)}\n`;
+        const feeName = fee.name.padEnd(20, ' ');
+        const feeAmount = formatCurrency(fee.amount).padStart(10, ' ');
+        message += `║ ${feeName}${feeAmount} ║\n`;
       });
     }
     
-    // Add total
-    message += `\n*Total Amount: ${formatCurrency(total)}*`;
+    // Add total with double line
+    message += `╠══════════════════════════════════════╣\n`;
+    message += `║                                      ║\n`;
+    const totalStr = formatCurrency(total).padStart(10, ' ');
+    message += `║ *TOTAL:${' '.repeat(21)}${totalStr}* ║\n`;
+    message += `╚══════════════════════════════════════╝\n\n`;
     
-    // Add timestamp
-    const now = new Date();
-    message += `\n\n_Generated on ${now.toLocaleDateString()} at ${now.toLocaleTimeString()}_`;
+    message += `Thank you for your order!\n`;
+    message += `Generated on: ${uaeTime}`;
 
     // Prepare the response
     const response: InvoiceResponse = {
@@ -231,38 +277,12 @@ export async function POST(request: Request) {
       }
     };
 
-    // Send the invoice via WhatsApp if phone number is provided
-    if (customerPhoneNumber) {
-      try {
-        // Format the phone number to E.164 format if needed
-        const formattedNumber = customerPhoneNumber.startsWith('+') 
-          ? customerPhoneNumber 
-          : `+${customerPhoneNumber.replace(/^\+/, '')}`;
-        
-        const whatsappMessage = await twilioClient.messages.create({
-          body: message.replace(/\n/g, '\n'), // Ensure proper line breaks
-          from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
-          to: `whatsapp:${formattedNumber}`
-        });
-        
-        response.whatsappMessageSid = whatsappMessage.sid;
-      } catch (twilioError) {
-        console.error('Error sending WhatsApp message:', twilioError);
-        // Don't fail the request, just log the error and continue
-        response.error = 'Invoice generated but failed to send via WhatsApp';
-      }
-    }
-
     return NextResponse.json(response);
 
   } catch (error) {
     console.error('Error generating invoice:', error);
     return NextResponse.json(
-      { 
-        success: false,
-        error: 'Failed to generate invoice',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { success: false, error: 'Failed to generate invoice' },
       { status: 500 }
     );
   }
