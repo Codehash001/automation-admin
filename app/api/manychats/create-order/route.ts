@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { Decimal } from '@prisma/client/runtime/library';
 
 // Helper function to parse the text items into structured data
 function parseItems(textItems: string | string[]) {
@@ -12,30 +11,34 @@ function parseItems(textItems: string | string[]) {
   for (const itemStr of itemsArray) {
     if (!itemStr || typeof itemStr !== 'string') continue;
     
-    // Handle the format: "null, Appam - 2"
+    // Handle the format: "null, Appam - 2" or "Appam - 2"
     const cleanStr = itemStr.replace(/^null\s*,\s*/, '').trim();
     if (!cleanStr) continue;
     
-    // Match item name and quantity (e.g., "Appam - 2")
-    const match = cleanStr.match(/^(.+?)\s*-\s*(\d+)(?:\s*[a-zA-Z]*)?$/);
+    // Match item name and price (e.g., "Appam - 2")
+    const match = cleanStr.match(/^(.+?)\s*-\s*(\d+(?:\.\d+)?)\s*$/);
     if (!match) {
       console.warn(`[parseItems] Could not parse item: "${itemStr}"`);
       continue;
     }
     
     const name = match[1].trim();
-    const quantity = parseInt(match[2], 10) || 1;
+    const price = parseFloat(match[2]);
     
-    result.push({ name, quantity });
+    result.push({ name, price, quantity: 1 });
   }
   
-  // Group by item name and sum quantities
-  const groupedItems = result.reduce<Array<{name: string, quantity: number}>>((acc, item) => {
-    const existing = acc.find(i => i.name.toLowerCase() === item.name.toLowerCase());
+  // Group by item name and price, and sum quantities
+  const groupedItems = result.reduce<Array<{name: string, price: number, quantity: number}>>((acc, item) => {
+    const existing = acc.find(i => 
+      i.name.toLowerCase() === item.name.toLowerCase() && 
+      i.price === item.price
+    );
+    
     if (existing) {
-      existing.quantity += item.quantity;
+      existing.quantity += 1;
     } else {
-      acc.push({ ...item });
+      acc.push({ name: item.name, price: item.price, quantity: 1 });
     }
     return acc;
   }, []);
@@ -129,11 +132,9 @@ export async function POST(request: Request) {
     })));
 
     // Map parsed items to menu items
-    const orderItems: {
-      menuItemId: number; quantity: number; price: Decimal; menuItemName: string; // For debugging
-    }[] = [];
+    const orderItems: { menuItemId: number; quantity: number; price: number; menuItemName: string; }[] = [];
     for (const parsedItem of parsedItems) {
-      // Case-insensitive search for menu item
+      // Find menu item by name (case-insensitive)
       const menuItem = menuItems.find(mi => 
         mi.name.trim().toLowerCase() === parsedItem.name.trim().toLowerCase()
       );
@@ -144,32 +145,33 @@ export async function POST(request: Request) {
         return NextResponse.json(
           { 
             error: `Menu item not found: "${parsedItem.name}"`,
-            availableItems: menuItems.map(mi => mi.name)
+            availableItems: menuItems.map(mi => ({
+              id: mi.id,
+              name: mi.name,
+              price: mi.price
+            }))
           },
           { status: 400 }
         );
       }
       
+      // Use the price from the input, not from the database
       orderItems.push({
         menuItemId: menuItem.id,
         quantity: parsedItem.quantity,
-        price: menuItem.price,
-        menuItemName: menuItem.name // For debugging
+        price: parsedItem.price,
+        menuItemName: menuItem.name
       });
     }
 
     console.log('[ManyChats] Mapped order items:', JSON.stringify(orderItems, null, 2));
 
     // Calculate totals
-    const subtotal = orderItems.reduce((sum, item) => {
-      const price = typeof item.price === 'number' ? item.price : Number(item.price);
-      return sum + (price * item.quantity);
-    }, 0);
-
+    const subtotal = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     console.log('[ManyChats] Calculating order totals');
     const { serviceFee, deliveryFee, vat, total } = await calculateTotals(
       orderItems.map(item => ({
-        price: typeof item.price === 'number' ? item.price : Number(item.price),
+        price: item.price,
         quantity: item.quantity
       })),
       parseInt(outletId)
@@ -261,8 +263,8 @@ export async function POST(request: Request) {
       id: item.menuItemId,
       name: item.menuItem.name,
       quantity: item.quantity,
-      price: typeof item.price === 'number' ? item.price : Number(item.price),
-      total: (typeof item.price === 'number' ? item.price : Number(item.price)) * item.quantity
+      price: item.price,
+      total: item.price ? Number(item.price) * item.quantity : 0
     }));
 
     // Calculate item quantities for grouped items
@@ -274,7 +276,7 @@ export async function POST(request: Request) {
       
       if (existingItem) {
         existingItem.quantity += item.quantity;
-        existingItem.total = existingItem.price * existingItem.quantity;
+        existingItem.total += item.total;
       } else {
         acc.push({ ...item });
       }
@@ -324,7 +326,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { 
         error: 'Failed to create order',
-        details: process.env.NODE_ENV === 'development' ? error as string : undefined
+        details: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined
       },
       { status: 500 }
     );
