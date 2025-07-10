@@ -194,7 +194,7 @@ export async function POST(request: Request) {
     
     const total = Number((subtotal + totalFees).toFixed(2));
 
-    // Get current date and time in UAE timezone
+    // Get current UAE time
     const uaeTime = new Date().toLocaleString('en-AE', { 
       timeZone: 'Asia/Dubai',
       year: 'numeric',
@@ -202,59 +202,32 @@ export async function POST(request: Request) {
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit',
       hour12: true
     });
 
-    // Build the invoice message with better formatting
-    let message = `╔══════════════════════════╗\n`;
-    message += `║        🛍️ INVOICE         ║\n`;
-    message += `╚══════════════════════════╝\n\n`;
+    // Build the simplified invoice message
+    let message = `*ORDER SUMMARY*\n`;
+    message += `${uaeTime} • ${orderType}\n\n`;
     
-    message += `Order Type: *${orderType}*\n`;
-    message += `Date: ${uaeTime}\n\n`;
-    
-    // Add items with better formatting
-    message += `╔══════════════════════════════════════╗\n`;
-    message += `║               ITEMS                  ║\n`;
-    message += `╠══════════════════════════╦══════════╣\n`;
-    
+    // Add items
+    message += `*Items:*\n`;
     processedItems.forEach(item => {
-      const itemName = item.name.padEnd(25, ' ').substring(0, 25);
-      const itemQty = `${item.quantity}x`.padStart(5, ' ');
-      const itemTotal = formatCurrency(item.total).padStart(10, ' ');
-      message += `║ ${itemName} ${itemQty} ${itemTotal} ║\n`;
+      message += `• ${item.name} × ${item.quantity} - ${formatCurrency(item.total)}\n`;
     });
     
-    message += `╠══════════════════════════╩══════════╣\n`;
+    message += `\n`;
     
     // Add subtotal
-    const subtotalStr = formatCurrency(subtotal).padStart(10, ' ');
-    message += `║ Subtotal:${' '.repeat(18)}${subtotalStr} ║\n`;
+    message += `Subtotal: ${formatCurrency(subtotal)}\n`;
     
-    // Add fees
+    // Add applicable fees
     const applicableFees = fees.filter(fee => fee.applicable && fee.amount > 0);
-    if (applicableFees.length > 0) {
-      message += `╠══════════════════════════════════════╣\n`;
-      message += `║           ADDITIONAL FEES             ║\n`;
-      message += `╠══════════════════════════════════════╣\n`;
-      
-      applicableFees.forEach(fee => {
-        const feeName = fee.name.padEnd(20, ' ');
-        const feeAmount = formatCurrency(fee.amount).padStart(10, ' ');
-        message += `║ ${feeName}${feeAmount} ║\n`;
-      });
-    }
+    applicableFees.forEach(fee => {
+      message += `${fee.name}: ${formatCurrency(fee.amount)}\n`;
+    });
     
-    // Add total with double line
-    message += `╠══════════════════════════════════════╣\n`;
-    message += `║                                      ║\n`;
-    const totalStr = formatCurrency(total).padStart(10, ' ');
-    message += `║ *TOTAL:${' '.repeat(21)}${totalStr}* ║\n`;
-    message += `╚══════════════════════════════════════╝\n\n`;
-    
-    message += `Thank you for your order!\n`;
-    message += `Generated on: ${uaeTime}`;
+    // Add total
+    message += `\n*Total: ${formatCurrency(total)}*`;
 
     // Prepare the response
     const response: InvoiceResponse = {
