@@ -28,7 +28,8 @@ export async function GET(request: Request) {
           }
         },
         select: {
-          id: true
+          id: true,
+          whatsappNo: true
         }
       });
 
@@ -39,7 +40,15 @@ export async function GET(request: Request) {
         );
       }
 
-      return NextResponse.json({ id: outlet.id });
+      // Ensure whatsapp number starts with +
+      const formattedWhatsappNo = outlet.whatsappNo?.startsWith('+') 
+        ? outlet.whatsappNo 
+        : `+${outlet.whatsappNo}`;
+
+      return NextResponse.json({ 
+        id: outlet.id,
+        whatsappNo: formattedWhatsappNo 
+      });
     }
 
     if (id) {
