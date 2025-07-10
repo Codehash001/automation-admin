@@ -322,11 +322,11 @@ export async function POST(request: Request) {
         },
         items: groupedItems,
         summary: {
-          subtotal: fullOrder.subtotal.toFixed(2),
-          deliveryFee: fullOrder.deliveryFee.toFixed(2),
-          serviceFee: fullOrder.serviceFee.toFixed(2),
-          vat: fullOrder.vat.toFixed(2),
-          total: fullOrder.total.toFixed(2)
+          subtotal: `${fullOrder.subtotal.toFixed(2)} AED`,
+          deliveryFee: `${fullOrder.deliveryFee.toFixed(2)} AED`,
+          serviceFee: `${fullOrder.serviceFee.toFixed(2)} AED`,
+          vat: `${fullOrder.vat.toFixed(2)} AED`,
+          total: `${fullOrder.total.toFixed(2)} AED`
         },
         note: fullOrder.note
       }
