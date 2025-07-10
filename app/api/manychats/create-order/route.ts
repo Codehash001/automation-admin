@@ -6,45 +6,45 @@ function parseItems(textItems: string | string[]) {
   // If it's a single item, convert it to an array for consistent processing
   const itemsArray = Array.isArray(textItems) ? textItems : [textItems];
   
-  const result = [];
+  const result: { name: string; price: number; quantity: number; }[] = [];
   
   for (const itemStr of itemsArray) {
     if (!itemStr || typeof itemStr !== 'string') continue;
     
-    // Handle the format: "null, Appam - 2" or "Appam - 2"
-    const cleanStr = itemStr.replace(/^null\s*,\s*/, '').trim();
-    if (!cleanStr) continue;
+    // Split by comma to get individual items
+    const items = itemStr.split(',').map(i => i.trim()).filter(Boolean);
     
-    // Match item name and price (e.g., "Appam - 2")
-    const match = cleanStr.match(/^(.+?)\s*-\s*(\d+(?:\.\d+)?)\s*$/);
-    if (!match) {
-      console.warn(`[parseItems] Could not parse item: "${itemStr}"`);
-      continue;
+    for (let item of items) {
+      // Handle the format: "Appam - 2" or "null, Appam - 2"
+      item = item.replace(/^null\s*,\s*/, '').trim();
+      if (!item) continue;
+      
+      // Match item name and price (e.g., "Appam - 2")
+      const match = item.match(/^(.+?)\s*-\s*(\d+(?:\.\d+)?)\s*$/);
+      if (!match) {
+        console.warn(`[parseItems] Could not parse item: "${item}"`);
+        continue;
+      }
+      
+      const name = match[1].trim();
+      const price = parseFloat(match[2]);
+      
+      // Check if we already have this exact item (same name and price)
+      const existingItem = result.find(i => 
+        i.name.toLowerCase() === name.toLowerCase() && 
+        i.price === price
+      );
+      
+      if (existingItem) {
+        existingItem.quantity += 1;
+      } else {
+        result.push({ name, price, quantity: 1 });
+      }
     }
-    
-    const name = match[1].trim();
-    const price = parseFloat(match[2]);
-    
-    result.push({ name, price, quantity: 1 });
   }
   
-  // Group by item name and price, and sum quantities
-  const groupedItems = result.reduce<Array<{name: string, price: number, quantity: number}>>((acc, item) => {
-    const existing = acc.find(i => 
-      i.name.toLowerCase() === item.name.toLowerCase() && 
-      i.price === item.price
-    );
-    
-    if (existing) {
-      existing.quantity += 1;
-    } else {
-      acc.push({ name: item.name, price: item.price, quantity: 1 });
-    }
-    return acc;
-  }, []);
-  
-  console.log('[parseItems] Parsed items:', JSON.stringify(groupedItems, null, 2));
-  return groupedItems;
+  console.log('[parseItems] Parsed items:', JSON.stringify(result, null, 2));
+  return result;
 }
 
 // Calculate order totals
