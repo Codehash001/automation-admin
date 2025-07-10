@@ -72,6 +72,32 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
   };
 }
 
+// Helper function to generate a markdown notification message for the order
+function generateOrderNotification(order: any) {
+  // Format each order item
+  const itemsList = order.items
+    .map((item: any) => {
+      const itemTotal = item.quantity * item.price;
+      return `• ${item.quantity}x ${item.menuItem.name} - ${item.price.toFixed(2)} AED (${itemTotal.toFixed(2)} AED)`;
+    })
+    .join('\n');
+
+  // Format the order summary
+  const orderSummary = `
+🆔 *Order #${order.id}*\n\n` +
+    `📦 *Items:*\n${itemsList}\n\n` +
+    `💵 *Order Summary*\n` +
+    `Subtotal: ${order.subtotal.toFixed(2)} AED\n` +
+    `Delivery Fee: ${order.deliveryFee.toFixed(2)} AED\n` +
+    `Service Fee: ${order.serviceFee.toFixed(2)} AED\n` +
+    `VAT (5%): ${order.vat.toFixed(2)} AED\n` +
+    `*Total: ${order.total.toFixed(2)} AED*\n\n` +
+    `📝 *Order Type:* ${order.orderType}\n` +
+    `💳 *Payment Method:* ${order.paymentMethod}`;
+
+  return orderSummary;
+}
+
 export async function POST(request: Request) {
   try {
     console.log('[ManyChats] Received order creation request');
@@ -319,8 +345,18 @@ export async function POST(request: Request) {
       }
     };
 
+    const notificationMessage = generateOrderNotification(fullOrder);
+
     console.log(`[ManyChats] Order ${fullOrder.id} created successfully`);
-    return NextResponse.json(response);
+    return NextResponse.json({
+      ...response,
+      notification: {
+        message: notificationMessage,
+        orderId: fullOrder.id,
+        total: fullOrder.total
+      }
+    });
+    
   } catch (error) {
     console.error('[ManyChats] Error creating order:', error);
     return NextResponse.json(
