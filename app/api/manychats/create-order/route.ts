@@ -3,34 +3,45 @@ import prisma from '@/lib/prisma';
 import { Decimal } from '@prisma/client/runtime/library';
 
 // Helper function to parse the text items into structured data
-function parseItems(textItems: string) {
-  // Remove the 'null, ' prefix if it exists
-  const cleanText = textItems.startsWith('null, ') ? textItems.substring(6) : textItems;
+function parseItems(textItems: string | string[]) {
+  // If it's a single item, convert it to an array for consistent processing
+  const itemsArray = Array.isArray(textItems) ? textItems : [textItems];
   
-  // Split by comma and process each item
-  return cleanText.split(',').map(item => {
-    const trimmed = item.trim();
-    // Match item name and price (e.g., "Idly Samber - 10 AED")
-    const match = trimmed.match(/^(.*?)\s*-\s*([\d.]+)\s*AED?$/i);
-    if (!match) return null;
+  const result = [];
+  
+  for (const itemStr of itemsArray) {
+    if (!itemStr || typeof itemStr !== 'string') continue;
     
-    // Keep the original case of the name
+    // Handle the format: "null, Appam - 2"
+    const cleanStr = itemStr.replace(/^null\s*,\s*/, '').trim();
+    if (!cleanStr) continue;
+    
+    // Match item name and quantity (e.g., "Appam - 2")
+    const match = cleanStr.match(/^(.+?)\s*-\s*(\d+)(?:\s*[a-zA-Z]*)?$/);
+    if (!match) {
+      console.warn(`[parseItems] Could not parse item: "${itemStr}"`);
+      continue;
+    }
+    
     const name = match[1].trim();
-    const price = parseFloat(match[2]);
+    const quantity = parseInt(match[2], 10) || 1;
     
-    return { name, price };
-  }).filter(Boolean)
-    .reduce((acc, item) => {
-      if (!item) return acc;
-      
-      const existing = acc.find(i => i.name.toLowerCase() === item.name.toLowerCase());
-      if (existing) {
-        existing.quantity++;
-      } else {
-        acc.push({ ...item, quantity: 1 });
-      }
-      return acc;
-    }, [] as Array<{ name: string; price: number; quantity: number }>);
+    result.push({ name, quantity });
+  }
+  
+  // Group by item name and sum quantities
+  const groupedItems = result.reduce<Array<{name: string, quantity: number}>>((acc, item) => {
+    const existing = acc.find(i => i.name.toLowerCase() === item.name.toLowerCase());
+    if (existing) {
+      existing.quantity += item.quantity;
+    } else {
+      acc.push({ ...item });
+    }
+    return acc;
+  }, []);
+  
+  console.log('[parseItems] Parsed items:', JSON.stringify(groupedItems, null, 2));
+  return groupedItems;
 }
 
 // Calculate order totals
@@ -40,9 +51,9 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
     where: { isActive: true },
   });
 
-  const serviceFeeRate = additionalPrices.find((p: { name: string; }) => p.name === 'SERVICE_FEE')?.value.toNumber() || 0.1; // 10% default
-  const deliveryFee = additionalPrices.find((p: { name: string; }) => p.name === 'DELIVERY_FEE')?.value.toNumber() || 10; // 10 AED default
-  const vatRate = additionalPrices.find((p: { name: string; }) => p.name === 'VAT')?.value.toNumber() || 0.05; // 5% default
+  const serviceFeeRate = additionalPrices.find((p: { name: string; }) => p.name === 'SERVICE_FEE')?.value.toNumber() || 0.1;
+  const deliveryFee = additionalPrices.find((p: { name: string; }) => p.name === 'DELIVERY_FEE')?.value.toNumber() || 10;
+  const vatRate = additionalPrices.find((p: { name: string; }) => p.name === 'VAT')?.value.toNumber() || 0.05;
 
   const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const serviceFee = subtotal * serviceFeeRate;
@@ -56,83 +67,6 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
     vat: parseFloat(vat.toFixed(2)),
     total: parseFloat(total.toFixed(2))
   };
-}
-
-// Generate markdown formatted order message with better formatting
-function generateOrderMessage(order: any) {
-  // Group items by name and sum quantities
-  const groupedItems = order.items.reduce((acc: any, item: any) => {
-    const key = `${item.menuItem.name}-${item.price}`;
-    if (!acc[key]) {
-      acc[key] = {
-        name: item.menuItem.name,
-        price: item.price,
-        quantity: 0,
-        total: 0
-      };
-    }
-    acc[key].quantity += item.quantity;
-    acc[key].total += item.price * item.quantity;
-    return acc;
-  }, {});
-
-  // Convert to array and format each line
-  const itemsList = Object.values(groupedItems).map((item: any) => {
-    const itemName = item.name.padEnd(25, ' ').substring(0, 25);
-    const itemQty = `${item.quantity}x`.padStart(5, ' ');
-    const itemPrice = `${item.price.toFixed(2)}`.padStart(7, ' ');
-    const itemTotal = item.total.toFixed(2).padStart(8, ' ');
-    return `${itemName} ${itemQty} @ ${itemPrice} = ${itemTotal} AED`;
-  }).join('\n');
-
-  // Format the order details
-  const formatLine = (label: string, value: string | number, isBold = false) => {
-    const formattedValue = typeof value === 'number' ? value.toFixed(2) + ' AED' : value;
-    const line = `${label}:`.padEnd(20, ' ') + formattedValue;
-    return isBold ? `*${line}*` : line;
-  };
-
-  // Get current UAE time
-  const uaeTime = new Date().toLocaleString('en-AE', { 
-    timeZone: 'Asia/Dubai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true
-  });
-
-  // Build the message
-  return `
-╔══════════════════════════════════════╗
-║            🛒 ORDER #${order.id.toString().padEnd(8, ' ')}         ║
-╚══════════════════════════════════════╝
-
-` +
-    `📅 ${uaeTime}\n\n` +
-    `👤 *CUSTOMER DETAILS*\n` +
-    `${'-'.repeat(40)}\n` +
-    `${formatLine('Name', order.customer.name)}\n` +
-    `${formatLine('Location', order.deliveryLocation || 'N/A')}\n` +
-    `${formatLine('Building', order.buildingType || 'N/A')}\n` +
-    `${formatLine('Address', order.deliveryAddress || 'N/A')}\n\n` +
-    `🛒 *ORDER ITEMS*\n` +
-    `${'-'.repeat(40)}\n` +
-    `${itemsList}\n\n` +
-    `� *PAYMENT SUMMARY*\n` +
-    `${'-'.repeat(40)}\n` +
-    `${formatLine('Subtotal', order.subtotal)}\n` +
-    `${formatLine('Delivery Fee', order.deliveryFee)}\n` +
-    `${formatLine('Service Fee', order.serviceFee)}\n` +
-    `${formatLine('VAT (5%)', order.vat)}\n` +
-    `${'-'.repeat(40)}\n` +
-    `${formatLine('TOTAL', order.total, true)}\n\n` +
-    `📝 *NOTES*\n` +
-    `${'-'.repeat(40)}\n` +
-    `${order.note || 'No additional notes'}\n\n` +
-    `Thank you for your order! 🙏`;
 }
 
 export async function POST(request: Request) {
@@ -165,7 +99,6 @@ export async function POST(request: Request) {
 
     console.log('[ManyChats] Parsing order items');
     const parsedItems = parseItems(textItems);
-    console.log(`[ManyChats] Parsed items:`, JSON.stringify(parsedItems, null, 2));
     
     if (!parsedItems.length) {
       console.error('[ManyChats] No valid items found in the order');
@@ -195,7 +128,7 @@ export async function POST(request: Request) {
       menuName: mi.menu.name
     })));
 
-    // Map parsed items to menu items and calculate quantities
+    // Map parsed items to menu items
     const orderItems: {
       menuItemId: number; quantity: number; price: Decimal; menuItemName: string; // For debugging
     }[] = [];
@@ -227,8 +160,14 @@ export async function POST(request: Request) {
 
     console.log('[ManyChats] Mapped order items:', JSON.stringify(orderItems, null, 2));
 
+    // Calculate totals
+    const subtotal = orderItems.reduce((sum, item) => {
+      const price = typeof item.price === 'number' ? item.price : Number(item.price);
+      return sum + (price * item.quantity);
+    }, 0);
+
     console.log('[ManyChats] Calculating order totals');
-    const { subtotal, serviceFee, deliveryFee, vat, total } = await calculateTotals(
+    const { serviceFee, deliveryFee, vat, total } = await calculateTotals(
       orderItems.map(item => ({
         price: typeof item.price === 'number' ? item.price : Number(item.price),
         quantity: item.quantity
@@ -240,7 +179,8 @@ export async function POST(request: Request) {
     // Create the order in a transaction
     const order = await prisma.$transaction(async (prisma) => {
       console.log('[ManyChats] Creating order record');
-      // Create the order
+      
+      // First create the order
       const newOrder = await prisma.order.create({
         data: {
           customer: { connect: { id: parseInt(customerId) } },
@@ -268,20 +208,32 @@ export async function POST(request: Request) {
       });
 
       console.log(`[ManyChats] Order created with ID: ${newOrder.id}`);
+      console.log('[ManyChats] Creating order items:', JSON.stringify(orderItems, null, 2));
 
       // Create order items
-      console.log(`[ManyChats] Creating ${orderItems.length} order items`);
-      await prisma.orderItem.createMany({
-        data: orderItems.map(item => ({
-          orderId: newOrder.id,
-          menuItemId: item.menuItemId,
-          quantity: item.quantity,
-          price: item.price,
-        })),
-      });
-      console.log('[ManyChats] Order items created successfully');
+      const createdItems = await Promise.all(
+        orderItems.map(item => 
+          prisma.orderItem.create({
+            data: {
+              orderId: newOrder.id,
+              menuItemId: item.menuItemId,
+              quantity: item.quantity,
+              price: item.price,
+            },
+            include: {
+              menuItem: true
+            }
+          })
+        )
+      );
 
-      return newOrder;
+      console.log(`[ManyChats] Created ${createdItems.length} order items`);
+      console.log('[ManyChats] Created items:', JSON.stringify(createdItems, null, 2));
+
+      return {
+        ...newOrder,
+        items: createdItems
+      };
     });
 
     console.log(`[ManyChats] Transaction completed for order ${order.id}`);
@@ -305,19 +257,13 @@ export async function POST(request: Request) {
     }
 
     // Format the order items
-    const orderItemsResponse = fullOrder.items.map(item => {
-      // Convert Prisma.Decimal to number
-      const price = typeof item.price === 'number' ? item.price : Number(item.price);
-      const quantity = item.quantity;
-      
-      return {
-        id: item.menuItemId,
-        name: item.menuItem.name,
-        quantity: quantity,
-        price: price,
-        total: price * quantity
-      };
-    });
+    const orderItemsResponse = fullOrder.items.map(item => ({
+      id: item.menuItemId,
+      name: item.menuItem.name,
+      quantity: item.quantity,
+      price: typeof item.price === 'number' ? item.price : Number(item.price),
+      total: (typeof item.price === 'number' ? item.price : Number(item.price)) * item.quantity
+    }));
 
     // Calculate item quantities for grouped items
     const groupedItems = orderItemsResponse.reduce((acc: any, item) => {
@@ -374,12 +320,10 @@ export async function POST(request: Request) {
     console.log(`[ManyChats] Order ${fullOrder.id} created successfully`);
     return NextResponse.json(response);
   } catch (error) {
-    console.error('[ManyChats] Error creating order:', {
-      message: error as string,
-    });
+    console.error('[ManyChats] Error creating order:', error);
     return NextResponse.json(
       { 
-        error: error as string || 'Failed to create order',
+        error: 'Failed to create order',
         details: process.env.NODE_ENV === 'development' ? error as string : undefined
       },
       { status: 500 }
