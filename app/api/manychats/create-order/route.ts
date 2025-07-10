@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { Decimal } from '@prisma/client/runtime/library';
 
 // Helper function to parse the text items into structured data
 function parseItems(textItems: string) {
@@ -164,38 +165,67 @@ export async function POST(request: Request) {
 
     console.log('[ManyChats] Parsing order items');
     const parsedItems = parseItems(textItems);
-    console.log(`[ManyChats] Parsed ${parsedItems.length} items`);
+    console.log(`[ManyChats] Parsed items:`, JSON.stringify(parsedItems, null, 2));
+    
+    if (!parsedItems.length) {
+      console.error('[ManyChats] No valid items found in the order');
+      return NextResponse.json(
+        { error: 'No valid items found in the order' },
+        { status: 400 }
+      );
+    }
     
     console.log('[ManyChats] Fetching menu items');
     const menuItems = await prisma.menuItem.findMany({
       where: {
-        name: {
-          in: parsedItems.map(item => item.name)
-        },
         menu: {
           outletId: parseInt(outletId)
         }
+      },
+      include: {
+        menu: true
       }
     });
-    console.log(`[ManyChats] Found ${menuItems.length} matching menu items`);
+    
+    console.log(`[ManyChats] Found ${menuItems.length} menu items in outlet ${outletId}`);
+    console.log('[ManyChats] Available menu items:', menuItems.map(mi => ({
+      id: mi.id,
+      name: mi.name,
+      price: mi.price,
+      menuName: mi.menu.name
+    })));
 
     // Map parsed items to menu items and calculate quantities
-    const orderItems = parsedItems.map(parsedItem => {
-      // Use case-insensitive comparison when finding menu items
+    const orderItems: {
+      menuItemId: number; quantity: number; price: Decimal; menuItemName: string; // For debugging
+    }[] = [];
+    for (const parsedItem of parsedItems) {
+      // Case-insensitive search for menu item
       const menuItem = menuItems.find(mi => 
-        mi.name.toLowerCase() === parsedItem.name.toLowerCase()
+        mi.name.trim().toLowerCase() === parsedItem.name.trim().toLowerCase()
       );
+      
       if (!menuItem) {
-        const errorMessage = `Menu item not found: ${parsedItem.name}. Available items: ${menuItems.map(mi => mi.name).join(', ')}`;
-        console.error(`[ManyChats] ${errorMessage}`);
-        throw new Error(errorMessage);
+        console.error(`[ManyChats] Menu item not found: "${parsedItem.name}"`);
+        console.error(`[ManyChats] Available items: ${menuItems.map(mi => `"${mi.name}"`).join(', ')}`);
+        return NextResponse.json(
+          { 
+            error: `Menu item not found: "${parsedItem.name}"`,
+            availableItems: menuItems.map(mi => mi.name)
+          },
+          { status: 400 }
+        );
       }
-      return {
+      
+      orderItems.push({
         menuItemId: menuItem.id,
         quantity: parsedItem.quantity,
-        price: menuItem.price
-      };
-    });
+        price: menuItem.price,
+        menuItemName: menuItem.name // For debugging
+      });
+    }
+
+    console.log('[ManyChats] Mapped order items:', JSON.stringify(orderItems, null, 2));
 
     console.log('[ManyChats] Calculating order totals');
     const { subtotal, serviceFee, deliveryFee, vat, total } = await calculateTotals(
