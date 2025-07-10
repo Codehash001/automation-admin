@@ -286,26 +286,13 @@ export async function POST(request: Request) {
 
     // Format the order items
     const orderItemsResponse = fullOrder.items.map(item => ({
-      id: item.menuItemId,
-      name: item.menuItem.name,
-      quantity: item.quantity,
-      price: item.price,
-      total: item.price ? Number(item.price) * item.quantity : 0
+      detail: `${item.menuItem.name} × ${item.quantity} - ${(Number(item.price) * Number(item.quantity)).toFixed(2)} AED`
     }));
 
     // Calculate item quantities for grouped items
-    const groupedItems = orderItemsResponse.reduce((acc: any, item) => {
-      const existingItem = acc.find((i: any) => 
-        i.name === item.name && 
-        i.price === item.price
-      );
-      
-      if (existingItem) {
-        existingItem.quantity += item.quantity;
-        existingItem.total += item.total;
-      } else {
-        acc.push({ ...item });
-      }
+    const groupedItems = orderItemsResponse.reduce((acc: any, item, index) => {
+      // Since we're already grouping in the parseItems function, we can just use the items as is
+      acc.push(item);
       return acc;
     }, []);
 
@@ -335,11 +322,11 @@ export async function POST(request: Request) {
         },
         items: groupedItems,
         summary: {
-          subtotal: fullOrder.subtotal,
-          deliveryFee: fullOrder.deliveryFee,
-          serviceFee: fullOrder.serviceFee,
-          vat: fullOrder.vat,
-          total: fullOrder.total
+          subtotal: fullOrder.subtotal.toFixed(2),
+          deliveryFee: fullOrder.deliveryFee.toFixed(2),
+          serviceFee: fullOrder.serviceFee.toFixed(2),
+          vat: fullOrder.vat.toFixed(2),
+          total: fullOrder.total.toFixed(2)
         },
         note: fullOrder.note
       }
