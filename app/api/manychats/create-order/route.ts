@@ -200,7 +200,7 @@ export async function POST(request: Request) {
     console.log('[ManyChats] Calculating order totals');
     const { subtotal, serviceFee, deliveryFee, vat, total } = await calculateTotals(
       orderItems.map(item => ({
-        price: typeof item.price === 'number' ? item.price : item.price.toNumber(),
+        price: typeof item.price === 'number' ? item.price : Number(item.price),
         quantity: item.quantity
       })),
       parseInt(outletId)
@@ -256,22 +256,93 @@ export async function POST(request: Request) {
 
     console.log(`[ManyChats] Transaction completed for order ${order.id}`);
 
-    // Generate and log the order details in markdown format
-    const orderMessage = generateOrderMessage(order);
-    console.log('\n--- ORDER DETAILS ---\n', orderMessage, '\n-------------------\n');
-
-    // Return the created order with markdown message
-    console.log(`[ManyChats] Order ${order.id} created successfully`);
-    return NextResponse.json({
-      success: true,
-      order: {
-        id: order.id,
-        markdownMessage: orderMessage,
-        total: order.total,
-        status: 'PENDING'
+    // Get order with all related data for the response
+    const fullOrder = await prisma.order.findUnique({
+      where: { id: order.id },
+      include: {
+        customer: true,
+        outlet: true,
+        items: {
+          include: {
+            menuItem: true
+          }
+        }
       }
     });
 
+    if (!fullOrder) {
+      throw new Error('Failed to retrieve order details');
+    }
+
+    // Format the order items
+    const orderItemsResponse = fullOrder.items.map(item => {
+      // Convert Prisma.Decimal to number
+      const price = typeof item.price === 'number' ? item.price : Number(item.price);
+      const quantity = item.quantity;
+      
+      return {
+        id: item.menuItemId,
+        name: item.menuItem.name,
+        quantity: quantity,
+        price: price,
+        total: price * quantity
+      };
+    });
+
+    // Calculate item quantities for grouped items
+    const groupedItems = orderItemsResponse.reduce((acc: any, item) => {
+      const existingItem = acc.find((i: any) => 
+        i.name === item.name && 
+        i.price === item.price
+      );
+      
+      if (existingItem) {
+        existingItem.quantity += item.quantity;
+        existingItem.total = existingItem.price * existingItem.quantity;
+      } else {
+        acc.push({ ...item });
+      }
+      return acc;
+    }, []);
+
+    // Prepare the structured response
+    const response = {
+      success: true,
+      order: {
+        id: fullOrder.id,
+        status: fullOrder.status,
+        orderType: fullOrder.orderType,
+        paymentMethod: fullOrder.paymentMethod,
+        createdAt: fullOrder.createdAt,
+        customer: {
+          id: fullOrder.customer.id,
+          name: fullOrder.customer.name,
+          phone: fullOrder.customer.whatsappNumber
+        },
+        outlet: {
+          id: fullOrder.outlet.id,
+          name: fullOrder.outlet.name,
+          whatsappNo: fullOrder.outlet.whatsappNo
+        },
+        delivery: {
+          address: fullOrder.deliveryAddress,
+          location: fullOrder.deliveryLocation,
+          buildingType: fullOrder.buildingType
+        },
+        items: groupedItems,
+        summary: {
+          subtotal: fullOrder.subtotal,
+          deliveryFee: fullOrder.deliveryFee,
+          serviceFee: fullOrder.serviceFee,
+          vat: fullOrder.vat,
+          total: fullOrder.total
+        },
+        note: fullOrder.note
+      }
+    };
+
+    console.log(`[ManyChats] Order ${fullOrder.id} created successfully`);
+    return NextResponse.json(response);
   } catch (error) {
     console.error('[ManyChats] Error creating order:', {
       message: error as string,
