@@ -24,6 +24,12 @@ export async function GET(request: Request) {
 
     // Handle the new available riders endpoint
     if (request.url.includes('/api/riders/available')) {
+      console.log('Available riders endpoint called with params:', {
+        emirateFilter,
+        driverType,
+        availableOnly
+      });
+      
       // Build the where clause based on query parameters
       const where: any = {
         available: availableOnly,
@@ -32,6 +38,8 @@ export async function GET(request: Request) {
       // Add driver type filter if provided
       if (driverType && ['DELIVERY', 'RIDE_SERVICE'].includes(driverType)) {
         where.driverType = driverType;
+      } else if (driverType) {
+        console.warn('Invalid driverType provided:', driverType);
       }
 
       // Add emirate filter if provided (can be ID or name)
@@ -44,6 +52,7 @@ export async function GET(request: Request) {
               emirateId: emirateId
             }
           };
+          console.log('Filtering by emirate ID:', emirateId);
         } else {
           // Otherwise treat it as a name
           where.emirates = {
@@ -56,34 +65,46 @@ export async function GET(request: Request) {
               }
             }
           };
+          console.log('Filtering by emirate name:', emirateFilter);
         }
       }
 
-      const riders = await prisma.driver.findMany({
-        where,
-        select: {
-          id: true,
-          name: true,
-          phone: true,
-          available: true,
-          driverType: true,
-          emirates: {
-            include: {
-              emirate: true,
-            },
-          },
-          _count: {
-            select: {
-              deliveries: true,
-            },
-          },
-        },
-        orderBy: {
-          name: 'asc',
-        },
-      });
+      console.log('Final where clause:', JSON.stringify(where, null, 2));
 
-      return NextResponse.json(riders);
+      try {
+        const riders = await prisma.driver.findMany({
+          where,
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            available: true,
+            driverType: true,
+            emirates: {
+              include: {
+                emirate: true,
+              },
+            },
+            _count: {
+              select: {
+                deliveries: true,
+              },
+            },
+          },
+          orderBy: {
+            name: 'asc',
+          },
+        });
+
+        console.log('Found riders:', riders.length);
+        return NextResponse.json(riders);
+      } catch (error) {
+        console.error('Database error:', error);
+        return NextResponse.json(
+          { error: 'Database error', details: String(error) },
+          { status: 500 }
+        );
+      }
     }
 
     // Existing GET handler for single rider by ID
