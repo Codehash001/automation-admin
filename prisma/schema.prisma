@@ -124,13 +124,21 @@ model OrderItem {
   price       Decimal   @db.Decimal(10, 2)
 }
 
+enum DriverType {
+  DELIVERY
+  RIDE_SERVICE
+}
+
 model Driver {
   id          Int         @id @default(autoincrement())
   name        String
   phone       String      @unique
   available   Boolean     @default(true)
+  driverType  DriverType  @default(DELIVERY)
   emirates    DriverEmirate[]
   deliveries  Delivery[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 }
 
 model DriverEmirate {
