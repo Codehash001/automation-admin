@@ -24,54 +24,48 @@ export async function GET(request: Request) {
 
     // Handle the new available riders endpoint
     if (request.url.includes('/api/riders/available')) {
-      console.log('Available riders endpoint called with params:', {
-        emirateFilter,
-        driverType,
-        availableOnly
-      });
-      
-      // Build the where clause based on query parameters
-      const where: any = {
-        available: availableOnly,
-      };
+      try {
+        const { emirateId, emirateName, driverType, available = 'true' } = Object.fromEntries(searchParams);
+        
+        console.log('Available riders endpoint called with params:', {
+          emirateId,
+          emirateName,
+          driverType,
+          available
+        });
+        
+        // Build the where clause
+        const where: any = {
+          available: available === 'true',
+        };
 
-      // Add driver type filter if provided
-      if (driverType && ['DELIVERY', 'RIDE_SERVICE'].includes(driverType)) {
-        where.driverType = driverType;
-      } else if (driverType) {
-        console.warn('Invalid driverType provided:', driverType);
-      }
+        // Add driver type filter if provided
+        if (driverType && ['DELIVERY', 'RIDE_SERVICE'].includes(driverType)) {
+          where.driverType = driverType as DriverType;
+        }
 
-      // Add emirate filter if provided (can be ID or name)
-      if (emirateFilter) {
-        const emirateId = Number(emirateFilter);
-        if (!isNaN(emirateId)) {
-          // If emirate is a number, treat it as ID
+        // Add emirate filter if provided
+        if (emirateId) {
           where.emirates = {
             some: {
-              emirateId: emirateId
+              emirateId: Number(emirateId)
             }
           };
-          console.log('Filtering by emirate ID:', emirateId);
-        } else {
-          // Otherwise treat it as a name
+        } else if (emirateName) {
           where.emirates = {
             some: {
               emirate: {
                 name: {
-                  contains: emirateFilter,
+                  contains: emirateName,
                   mode: 'insensitive'
                 }
               }
             }
           };
-          console.log('Filtering by emirate name:', emirateFilter);
         }
-      }
 
-      console.log('Final where clause:', JSON.stringify(where, null, 2));
+        console.log('Querying riders with where:', JSON.stringify(where, null, 2));
 
-      try {
         const riders = await prisma.driver.findMany({
           where,
           select: {
@@ -96,12 +90,29 @@ export async function GET(request: Request) {
           },
         });
 
-        console.log('Found riders:', riders.length);
-        return NextResponse.json(riders);
+        console.log(`Found ${riders.length} riders`);
+
+        // Format the response to match the food/outlet route
+        const responseData = {
+          success: true,
+          data: riders.map(rider => ({
+            ...rider,
+            emirates: rider.emirates.map(e => ({
+              emirate: e.emirate
+            }))
+          }))
+        };
+
+        return NextResponse.json(responseData);
+
       } catch (error) {
-        console.error('Database error:', error);
+        console.error('Error in /api/riders/available:', error);
         return NextResponse.json(
-          { error: 'Database error', details: String(error) },
+          { 
+            success: false, 
+            error: 'Failed to fetch riders',
+            details: error instanceof Error ? error.message : String(error)
+          },
           { status: 500 }
         );
       }
