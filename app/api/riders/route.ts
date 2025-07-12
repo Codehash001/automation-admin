@@ -18,126 +18,15 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    const emirateFilter = searchParams.get('emirate');
-    const driverType = searchParams.get('driverType') as DriverType | null;
-    const availableOnly = searchParams.get('available') !== 'false'; // true by default
-
-    // Handle the new available riders endpoint
-    if (request.url.includes('/api/riders/available')) {
-      try {
-        const { emirateId, emirateName, driverType, available = 'true' } = Object.fromEntries(searchParams);
-        
-        console.log('Available riders endpoint called with params:', {
-          emirateId,
-          emirateName,
-          driverType,
-          available
-        });
-        
-        // Build the where clause
-        const where: any = {
-          available: available === 'true',
-        };
-
-        // Add driver type filter if provided
-        if (driverType && ['DELIVERY', 'RIDE_SERVICE'].includes(driverType)) {
-          where.driverType = driverType as DriverType;
-        }
-
-        // Add emirate filter if provided
-        if (emirateId) {
-          where.emirates = {
-            some: {
-              emirateId: Number(emirateId)
-            }
-          };
-        } else if (emirateName) {
-          where.emirates = {
-            some: {
-              emirate: {
-                name: {
-                  contains: emirateName,
-                  mode: 'insensitive'
-                }
-              }
-            }
-          };
-        }
-
-        console.log('Querying riders with where:', JSON.stringify(where, null, 2));
-
-        const riders = await prisma.driver.findMany({
-          where,
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            available: true,
-            driverType: true,
-            emirates: {
-              include: {
-                emirate: true,
-              },
-            },
-            _count: {
-              select: {
-                deliveries: true,
-              },
-            },
-          },
-          orderBy: {
-            name: 'asc',
-          },
-        });
-
-        console.log(`Found ${riders.length} riders`);
-
-        // Format the response to match the food/outlet route
-        const responseData = {
-          success: true,
-          data: riders.map(rider => ({
-            ...rider,
-            emirates: rider.emirates.map(e => ({
-              emirate: e.emirate
-            }))
-          }))
-        };
-
-        return NextResponse.json(responseData);
-
-      } catch (error) {
-        console.error('Error in /api/riders/available:', error);
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: 'Failed to fetch riders',
-            details: error instanceof Error ? error.message : String(error)
-          },
-          { status: 500 }
-        );
-      }
-    }
-
-    // Existing GET handler for single rider by ID
+    
+    // Handle single rider by ID
     if (id) {
-      // Get single rider
       const rider = await prisma.driver.findUnique({
         where: { id: Number(id) },
-        select: {
-          id: true,
-          name: true,
-          phone: true,
-          available: true,
-          driverType: true,
-          createdAt: true,
+        include: {
           emirates: {
             include: {
               emirate: true,
-            },
-          },
-          _count: {
-            select: {
-              deliveries: true,
             },
           },
         },
@@ -151,16 +40,39 @@ export async function GET(request: Request) {
       }
 
       return NextResponse.json(rider);
-    } else {
-      // Get all riders
+    }
+
+    // Handle list of riders with filters
+    try {
+      const emirateId = searchParams.get('emirateId');
+      const driverType = searchParams.get('driverType') as DriverType | null;
+      const available = searchParams.get('available');
+      
+      const where: any = {};
+      
+      // Only filter by available if explicitly requested
+      if (available !== null) {
+        where.available = available === 'true';
+      }
+      
+      if (emirateId) {
+        where.emirates = {
+          some: { emirateId: Number(emirateId) }
+        };
+      }
+      
+      if (driverType) {
+        where.driverType = driverType;
+      }
+
       const riders = await prisma.driver.findMany({
+        where,
         select: {
           id: true,
           name: true,
           phone: true,
           available: true,
           driverType: true,
-          createdAt: true,
           emirates: {
             include: {
               emirate: true,
@@ -172,16 +84,30 @@ export async function GET(request: Request) {
             },
           },
         },
-        orderBy: {
-          id: 'desc',
-        },
+        orderBy: { name: 'asc' },
       });
-      return NextResponse.json(riders);
+
+      // Format the response
+      const responseData = riders.map(rider => ({
+        ...rider,
+        emirates: rider.emirates.map(e => ({
+          emirate: e.emirate
+        }))
+      }));
+
+      return NextResponse.json(responseData);
+      
+    } catch (error) {
+      console.error('Error fetching riders:', error);
+      return NextResponse.json(
+        { error: 'Failed to fetch riders' },
+        { status: 500 }
+      );
     }
   } catch (error) {
-    console.error('Error fetching riders:', error);
+    console.error('Error in /api/riders:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch riders' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
