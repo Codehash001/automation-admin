@@ -16,8 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import 'leaflet/dist/leaflet.css'; // Static CSS import
 
 // Minimal Custom Time Picker Component
 const CustomTimePicker = ({ value, onChange, className, required }: { value: string; onChange: (value: string) => void; className?: string; required?: boolean }) => {
@@ -169,12 +168,29 @@ export default function OutletsPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined' && mapRef.current && !mapInitialized) {
-      leafletMap.current = L.map(mapRef.current).setView([25.276987, 55.296249], 13);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      }).addTo(leafletMap.current);
+      const initializeMap = () => {
+        // Dynamically import Leaflet to prevent SSR issues
+        import('leaflet').then((L) => {
+          if (!mapRef.current) return;
+          
+          leafletMap.current = L.default.map(mapRef.current).setView([25.276987, 55.296249], 13);
+          L.default.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          }).addTo(leafletMap.current);
 
-      setMapInitialized(true);
+          // Force map to resize and invalidate after a short delay
+          setTimeout(() => {
+            if (leafletMap.current) {
+              leafletMap.current.invalidateSize();
+            }
+          }, 100);
+
+          setMapInitialized(true);
+        });
+      };
+
+      // Initialize map directly since CSS is now statically imported
+      initializeMap();
     }
 
     return () => {
@@ -205,7 +221,7 @@ export default function OutletsPage() {
   useEffect(() => {
     if (!isDialogOpen) {
       // Clean up map when dialog closes
-      if (leafletMap.current) {
+      if (typeof window !== 'undefined' && leafletMap.current) {
         leafletMap.current.remove();
         leafletMap.current = null;
         markerRef.current = null;
@@ -215,65 +231,50 @@ export default function OutletsPage() {
       return;
     }
 
+    // Only run on client side
+    if (typeof window === 'undefined') return;
+
     // Initialize map after a short delay to ensure DOM is ready
     const timer = setTimeout(() => {
       if (!mapRef.current || leafletMap.current) return;
 
-      // Initialize the Leaflet map
-      leafletMap.current = L.map(mapRef.current).setView([25.2048, 55.2708], 10);
-      
-      // Add OpenStreetMap tiles
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: ' OpenStreetMap contributors'
-      }).addTo(leafletMap.current);
+      // Dynamically import Leaflet to prevent SSR issues
+      import('leaflet').then((L) => {
+        // Double-check that mapRef.current is still available
+        if (!mapRef.current) return;
+        
+        // Initialize the Leaflet map
+        leafletMap.current = L.default.map(mapRef.current).setView([25.2048, 55.2708], 10);
+        
+        // Add OpenStreetMap tiles
+        L.default.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: ' OpenStreetMap contributors'
+        }).addTo(leafletMap.current);
 
-      // Add click event to place marker
-      leafletMap.current.on('click', function (e: any) {
-        const lat = e.latlng.lat.toFixed(6);
-        const lng = e.latlng.lng.toFixed(6);
+        // Force map to resize and invalidate after initialization
+        setTimeout(() => {
+          if (leafletMap.current) {
+            leafletMap.current.invalidateSize();
+          }
+        }, 100);
 
-        setFormData(prev => ({
-          ...prev,
-          exactLocation: { lat, lng }
-        }));
+        // Add click event to place marker
+        leafletMap.current.on('click', function (e: any) {
+          const lat = e.latlng.lat.toFixed(6);
+          const lng = e.latlng.lng.toFixed(6);
 
-        // Remove old marker if it exists
-        if (markerRef.current) {
-          markerRef.current.remove();
-        }
-
-        // Add new marker with a custom icon to ensure visibility
-        const customIcon = L.icon({
-          iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-          iconSize: [25, 41],
-          iconAnchor: [12, 41],
-          popupAnchor: [1, -34],
-          shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-          shadowSize: [41, 41]
-        });
-        markerRef.current = L.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current!);
-        if (leafletMap.current) {
-          const currentZoom = leafletMap.current.getZoom() || 13;
-          leafletMap.current.setView([lat, lng], currentZoom);
-        }
-
-        // Add drag event listener to update form data when marker is dragged
-        markerRef.current.on('dragend', function (e: any) {
-          const newLat = e.target.getLatLng().lat.toFixed(6);
-          const newLng = e.target.getLatLng().lng.toFixed(6);
           setFormData(prev => ({
             ...prev,
-            exactLocation: { lat: newLat, lng: newLng }
+            exactLocation: { lat, lng }
           }));
-        });
-      });
 
-      // Add marker if location already exists
-      if (formData.exactLocation.lat && formData.exactLocation.lng) {
-        const lat = parseFloat(formData.exactLocation.lat);
-        const lng = parseFloat(formData.exactLocation.lng);
-        if (!isNaN(lat) && !isNaN(lng)) {
-          const customIcon = L.icon({
+          // Remove old marker if it exists
+          if (markerRef.current) {
+            markerRef.current.remove();
+          }
+
+          // Add new marker with a custom icon to ensure visibility
+          const customIcon = L.default.icon({
             iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
             iconSize: [25, 41],
             iconAnchor: [12, 41],
@@ -281,7 +282,7 @@ export default function OutletsPage() {
             shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
             shadowSize: [41, 41]
           });
-          markerRef.current = L.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current);
+          markerRef.current = L.default.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current!);
           if (leafletMap.current) {
             const currentZoom = leafletMap.current.getZoom() || 13;
             leafletMap.current.setView([lat, lng], currentZoom);
@@ -296,8 +297,39 @@ export default function OutletsPage() {
               exactLocation: { lat: newLat, lng: newLng }
             }));
           });
+        });
+
+        // Add marker if location already exists
+        if (formData.exactLocation.lat && formData.exactLocation.lng) {
+          const lat = parseFloat(formData.exactLocation.lat);
+          const lng = parseFloat(formData.exactLocation.lng);
+          if (!isNaN(lat) && !isNaN(lng)) {
+            const customIcon = L.default.icon({
+              iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+              iconSize: [25, 41],
+              iconAnchor: [12, 41],
+              popupAnchor: [1, -34],
+              shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+              shadowSize: [41, 41]
+            });
+            markerRef.current = L.default.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current);
+            if (leafletMap.current) {
+              const currentZoom = leafletMap.current.getZoom() || 13;
+              leafletMap.current.setView([lat, lng], currentZoom);
+            }
+
+            // Add drag event listener to update form data when marker is dragged
+            markerRef.current.on('dragend', function (e: any) {
+              const newLat = e.target.getLatLng().lat.toFixed(6);
+              const newLng = e.target.getLatLng().lng.toFixed(6);
+              setFormData(prev => ({
+                ...prev,
+                exactLocation: { lat: newLat, lng: newLng }
+              }));
+            });
+          }
         }
-      }
+      });
     }, 100);
 
     return () => {
@@ -312,6 +344,9 @@ export default function OutletsPage() {
 
   // Update map marker when location changes
   useEffect(() => {
+    // Only run on client side
+    if (typeof window === 'undefined') return;
+    
     if (!leafletMap.current || !formData.exactLocation.lat || !formData.exactLocation.lng) return;
 
     const lat = parseFloat(formData.exactLocation.lat);
@@ -322,28 +357,31 @@ export default function OutletsPage() {
     if (markerRef.current) {
       markerRef.current.setLatLng([lat, lng]);
     } else {
-      const customIcon = L.icon({
-        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-        shadowSize: [41, 41]
-      });
-      markerRef.current = L.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current!);
-      if (leafletMap.current) {
-        const currentZoom = leafletMap.current.getZoom() || 13;
-        leafletMap.current.setView([lat, lng], currentZoom);
-      }
+      // Dynamically import Leaflet to prevent SSR issues
+      import('leaflet').then((L) => {
+        const customIcon = L.default.icon({
+          iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+          shadowSize: [41, 41]
+        });
+        markerRef.current = L.default.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current!);
+        if (leafletMap.current) {
+          const currentZoom = leafletMap.current.getZoom() || 13;
+          leafletMap.current.setView([lat, lng], currentZoom);
+        }
 
-      // Add drag event listener to update form data when marker is dragged
-      markerRef.current.on('dragend', function (e: any) {
-        const newLat = e.target.getLatLng().lat.toFixed(6);
-        const newLng = e.target.getLatLng().lng.toFixed(6);
-        setFormData(prev => ({
-          ...prev,
-          exactLocation: { lat: newLat, lng: newLng }
-        }));
+        // Add drag event listener to update form data when marker is dragged
+        markerRef.current.on('dragend', function (e: any) {
+          const newLat = e.target.getLatLng().lat.toFixed(6);
+          const newLng = e.target.getLatLng().lng.toFixed(6);
+          setFormData(prev => ({
+            ...prev,
+            exactLocation: { lat: newLat, lng: newLng }
+          }));
+        });
       });
     }
     if (leafletMap.current) {
@@ -376,6 +414,9 @@ export default function OutletsPage() {
 
   // Function to select a location from search results
   const selectLocation = (place: any) => {
+    // Only run on client side
+    if (typeof window === 'undefined') return;
+    
     const lat = parseFloat(place.lat).toFixed(6);
     const lng = parseFloat(place.lon).toFixed(6);
 
@@ -389,29 +430,31 @@ export default function OutletsPage() {
       markerRef.current.remove();
     }
 
-    // Add new marker
-    const customIcon = L.icon({
-      iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-      iconSize: [25, 41],
-      iconAnchor: [12, 41],
-      popupAnchor: [1, -34],
-      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-      shadowSize: [41, 41]
-    });
-    markerRef.current = L.marker([parseFloat(lat), parseFloat(lng)], { icon: customIcon, draggable: true }).addTo(leafletMap.current!);
-    if (leafletMap.current) {
-      const currentZoom = leafletMap.current.getZoom() || 13;
-      leafletMap.current.setView([parseFloat(lat), parseFloat(lng)], currentZoom);
-    }
+    // Add new marker using dynamic import
+    import('leaflet').then((L) => {
+      const customIcon = L.default.icon({
+        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+        shadowSize: [41, 41]
+      });
+      markerRef.current = L.default.marker([parseFloat(lat), parseFloat(lng)], { icon: customIcon, draggable: true }).addTo(leafletMap.current!);
+      if (leafletMap.current) {
+        const currentZoom = leafletMap.current.getZoom() || 13;
+        leafletMap.current.setView([parseFloat(lat), parseFloat(lng)], currentZoom);
+      }
 
-    // Add drag event listener to update form data when marker is dragged
-    markerRef.current.on('dragend', function (e: any) {
-      const newLat = e.target.getLatLng().lat.toFixed(6);
-      const newLng = e.target.getLatLng().lng.toFixed(6);
-      setFormData(prev => ({
-        ...prev,
-        exactLocation: { lat: newLat, lng: newLng }
-      }));
+      // Add drag event listener to update form data when marker is dragged
+      markerRef.current.on('dragend', function (e: any) {
+        const newLat = e.target.getLatLng().lat.toFixed(6);
+        const newLng = e.target.getLatLng().lng.toFixed(6);
+        setFormData(prev => ({
+          ...prev,
+          exactLocation: { lat: newLat, lng: newLng }
+        }));
+      });
     });
 
     // Clear search results
@@ -917,7 +960,11 @@ export default function OutletsPage() {
                     ))}
                   </div>
                 )}
-                <div ref={mapRef} className="h-64 w-full rounded-md border border-gray-200" />
+                <div 
+                  ref={mapRef} 
+                  className="h-64 w-full rounded-md border border-gray-200 overflow-hidden" 
+                  style={{ minHeight: '256px', position: 'relative' }}
+                />
                 <p className="text-xs text-muted-foreground">Click on the map to set the outlet location</p>
               </div>
 
