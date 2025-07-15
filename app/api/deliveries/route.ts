@@ -141,23 +141,54 @@ function startRiderNotificationLoop(
       // Send WhatsApp notification - remove the + sign from phone number
       const phoneWithoutPlus = driver.phone.replace(/^\+/, '');
       
-      const response = await fetch('https://www.uchat.com.au/api/subscriber/send-sub-flow-by-user-id', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.UCHAT_API_KEY}`
-        },
-        body: JSON.stringify({
-          user_id: phoneWithoutPlus, // Phone number without + sign
-          sub_flow_ns: SUB_FLOW_NS,
-          orderId: orderId.toString(),
-          deliveryId: deliveryId.toString(),
-          driverName: driver.name
-        })
-      });
+      // Add retry logic for network issues
+      let retryCount = 0;
+      const maxRetries = 3;
+      let response;
+      
+      while (retryCount < maxRetries) {
+        try {
+          response = await fetch('https://www.uchat.com.au/api/subscriber/send-sub-flow-by-user-id', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.UCHAT_API_KEY}`
+            },
+            body: JSON.stringify({
+              user_id: phoneWithoutPlus, // Phone number without + sign
+              sub_flow_ns: SUB_FLOW_NS,
+              orderId: orderId.toString(),
+              deliveryId: deliveryId.toString(),
+              driverName: driver.name
+            }),
+            // Add timeout to prevent hanging
+            signal: AbortSignal.timeout(10000) // 10 second timeout
+          });
+          
+          if (response.ok) {
+            break; // Success, exit retry loop
+          } else {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+        } catch (fetchError) {
+          retryCount++;
+          console.error(`Attempt ${retryCount} failed for driver ${driver.id}:`, fetchError);
+          
+          if (retryCount >= maxRetries) {
+            throw fetchError; // Re-throw after max retries
+          }
+          
+          // Wait before retry (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+        }
+      }
 
-      if (!response.ok) {
-        console.error(`Failed to send notification to driver ${driver.id}`);
+      if (!response || !response.ok) {
+        console.error(`Failed to send notification to driver ${driver.id} after ${maxRetries} attempts`);
+        // Continue to next driver instead of stopping the whole process
+        currentIndex++;
+        setTimeout(notifyNextDriver, 1000);
+        return;
       } else {
         console.log(`Notification sent to driver ${driver.id} (${driver.phone})`);
       }
