@@ -165,6 +165,26 @@ export default function OutletsPage() {
   const markerRef = useRef<L.Marker | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [mapInitialized, setMapInitialized] = useState(false); // Track if map is initialized
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && mapRef.current && !mapInitialized) {
+      leafletMap.current = L.map(mapRef.current).setView([25.276987, 55.296249], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      }).addTo(leafletMap.current);
+
+      setMapInitialized(true);
+    }
+
+    return () => {
+      if (leafletMap.current) {
+        leafletMap.current.remove();
+        leafletMap.current = null;
+        setMapInitialized(false);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (selectedOutlet) {
@@ -199,13 +219,12 @@ export default function OutletsPage() {
     const timer = setTimeout(() => {
       if (!mapRef.current || leafletMap.current) return;
 
-      // Initialize map
-      leafletMap.current = L.map(mapRef.current).setView([25.276987, 55.296249], 10); // Default to Dubai
-
-      // Add OpenStreetMap tiles with English attribution
+      // Initialize the Leaflet map
+      leafletMap.current = L.map(mapRef.current).setView([25.2048, 55.2708], 10);
+      
+      // Add OpenStreetMap tiles
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        maxZoom: 19,
+        attribution: ' OpenStreetMap contributors'
       }).addTo(leafletMap.current);
 
       // Add click event to place marker
@@ -233,8 +252,10 @@ export default function OutletsPage() {
           shadowSize: [41, 41]
         });
         markerRef.current = L.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current!);
-        const currentZoom = leafletMap.current!.getZoom() || 13;
-        leafletMap.current!.setView([lat, lng], currentZoom);
+        if (leafletMap.current) {
+          const currentZoom = leafletMap.current.getZoom() || 13;
+          leafletMap.current.setView([lat, lng], currentZoom);
+        }
 
         // Add drag event listener to update form data when marker is dragged
         markerRef.current.on('dragend', function (e: any) {
@@ -261,8 +282,10 @@ export default function OutletsPage() {
             shadowSize: [41, 41]
           });
           markerRef.current = L.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current);
-          const currentZoom = leafletMap.current.getZoom() || 13;
-          leafletMap.current.setView([lat, lng], currentZoom);
+          if (leafletMap.current) {
+            const currentZoom = leafletMap.current.getZoom() || 13;
+            leafletMap.current.setView([lat, lng], currentZoom);
+          }
 
           // Add drag event listener to update form data when marker is dragged
           markerRef.current.on('dragend', function (e: any) {
@@ -307,7 +330,11 @@ export default function OutletsPage() {
         shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
         shadowSize: [41, 41]
       });
-      markerRef.current = L.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current);
+      markerRef.current = L.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current!);
+      if (leafletMap.current) {
+        const currentZoom = leafletMap.current.getZoom() || 13;
+        leafletMap.current.setView([lat, lng], currentZoom);
+      }
 
       // Add drag event listener to update form data when marker is dragged
       markerRef.current.on('dragend', function (e: any) {
@@ -319,8 +346,10 @@ export default function OutletsPage() {
         }));
       });
     }
-    const currentZoom = leafletMap.current.getZoom() || 13;
-    leafletMap.current.setView([lat, lng], currentZoom);
+    if (leafletMap.current) {
+      const currentZoom = leafletMap.current.getZoom() || 13;
+      leafletMap.current.setView([lat, lng], currentZoom);
+    }
   }, [formData.exactLocation]);
 
   // Function to search for locations using Nominatim API
@@ -370,8 +399,10 @@ export default function OutletsPage() {
       shadowSize: [41, 41]
     });
     markerRef.current = L.marker([parseFloat(lat), parseFloat(lng)], { icon: customIcon, draggable: true }).addTo(leafletMap.current!);
-    const currentZoom = leafletMap.current!.getZoom() || 13;
-    leafletMap.current!.setView([parseFloat(lat), parseFloat(lng)], currentZoom);
+    if (leafletMap.current) {
+      const currentZoom = leafletMap.current.getZoom() || 13;
+      leafletMap.current.setView([parseFloat(lat), parseFloat(lng)], currentZoom);
+    }
 
     // Add drag event listener to update form data when marker is dragged
     markerRef.current.on('dragend', function (e: any) {
