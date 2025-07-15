@@ -1,14 +1,41 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
+// Haversine formula to calculate distance between two points
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Radius of the Earth in kilometers
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const lat1Rad = lat1 * Math.PI / 180;
+  const lat2Rad = lat2 * Math.PI / 180;
+
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1Rad) * Math.cos(lat2Rad);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c;
+
+  return distance;
+}
+
+// Type definitions for JSON fields
+type LocationData = {
+  lat: string | number;
+  lng: string | number;
+};
+
+type OperatingHours = {
+  open: string;
+  close: string;
+};
+
 type OutletData = {
   name: string;
   emiratesId: number;
   cuisineIds: number[];
   whatsappNo: string;
   status: 'OPEN' | 'BUSY' | 'CLOSED';
-  exactLocation: { lat: number; lng: number };
-  operatingHours: { open: string; close: string };
+  exactLocation: LocationData;
+  operatingHours: OperatingHours;
 };
 
 export async function GET(request: Request) {
@@ -114,23 +141,118 @@ export async function GET(request: Request) {
         lng: parseFloat(lng as string),
       };
 
-      // Filter outlets within 10km radius
-      where.exactLocation = {
-        $near: {
-          $geometry: {
-            type: 'Point',
-            coordinates: [userLocation.lng, userLocation.lat]
+      // Get all outlets first, then filter by distance and operating hours
+      const allOutlets = await prisma.outlet.findMany({
+        where: {
+          ...where,
+          status: 'OPEN', // Only get open outlets
+        },
+        include: {
+          emirates: true,
+          cuisines: {
+            include: {
+              cuisine: true
+            }
           },
-          $maxDistance: 10000 // 10km radius
-        }
-      };
+          _count: {
+            select: {
+              menus: true,
+              orders: true
+            }
+          }
+        },
+        orderBy: { name: 'asc' }
+      });
 
-      // Filter outlets where current time is within operating hours
-      const currentTime = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'Asia/Dubai' });
-      where.operatingHours = {
-        open: { $lte: currentTime },
-        close: { $gte: currentTime }
-      };
+      // Get current time in Dubai timezone
+      const now = new Date();
+      const currentTime = now.toLocaleTimeString('en-US', { 
+        hour12: false, 
+        timeZone: 'Asia/Dubai',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      // Filter outlets within 5km radius and check operating hours
+      const availableOutlets = allOutlets.filter(outlet => {
+        // Cast JSON fields to proper types
+        const location = outlet.exactLocation as LocationData;
+        const hours = outlet.operatingHours as OperatingHours;
+
+        // Skip outlets without location data
+        if (!location || !location.lat || !location.lng) {
+          return false;
+        }
+
+        // Calculate distance using Haversine formula
+        const distance = calculateDistance(
+          userLocation.lat, 
+          userLocation.lng,
+          parseFloat(location.lat.toString()), 
+          parseFloat(location.lng.toString())
+        );
+
+        // Check if within 5km radius
+        const withinRadius = distance <= 5;
+
+        // Check if currently open based on operating hours
+        let isCurrentlyOpen = true;
+        if (hours?.open && hours?.close) {
+          const openTime = hours.open;
+          const closeTime = hours.close;
+          
+          // Handle time comparison (HH:MM format)
+          if (closeTime < openTime) {
+            // Crosses midnight (e.g., 22:00 - 02:00)
+            isCurrentlyOpen = currentTime >= openTime || currentTime <= closeTime;
+          } else {
+            // Same day (e.g., 09:00 - 22:00)
+            isCurrentlyOpen = currentTime >= openTime && currentTime <= closeTime;
+          }
+        }
+
+        return withinRadius && isCurrentlyOpen;
+      });
+
+      // Sort by distance (closest first) and add distance info
+      const sortedOutlets = availableOutlets
+        .map(outlet => {
+          const location = outlet.exactLocation as LocationData;
+          return {
+            ...outlet,
+            distance: parseFloat(calculateDistance(
+              userLocation.lat, 
+              userLocation.lng,
+              parseFloat(location.lat.toString()), 
+              parseFloat(location.lng.toString())
+            ).toFixed(2))
+          };
+        })
+        .sort((a, b) => a.distance - b.distance);
+
+      // Check if responseType is objectArray
+      if (responseType === 'objectArray') {
+        const outletsObject: { [key: string]: any } = {};
+        sortedOutlets.forEach((outlet, index) => {
+          outletsObject[`outlet${index + 1}`] = {
+            ...outlet,
+            cuisines: outlet.cuisines.map(oc => ({
+              cuisine: oc.cuisine
+            }))
+          };
+        });
+        return NextResponse.json({ outlets: outletsObject });
+      }
+
+      // Default response format (array)
+      const formattedOutlets = sortedOutlets.map(outlet => ({
+        ...outlet,
+        cuisines: outlet.cuisines.map(oc => ({
+          cuisine: oc.cuisine
+        }))
+      }));
+
+      return NextResponse.json(formattedOutlets);
     }
 
     // Get all outlets with relationships
@@ -247,8 +369,14 @@ export async function POST(request: Request) {
           emiratesId: data.emiratesId,
           whatsappNo: data.whatsappNo.trim(),
           status: data.status || 'OPEN',
-          exactLocation: data.exactLocation,
-          operatingHours: data.operatingHours,
+          exactLocation: {
+            lat: parseFloat(data.exactLocation.lat as string),
+            lng: parseFloat(data.exactLocation.lng as string),
+          },
+          operatingHours: {
+            open: data.operatingHours.open,
+            close: data.operatingHours.close,
+          },
           cuisines: {
             create: data.cuisineIds.map(cuisineId => ({
               cuisine: { connect: { id: cuisineId } }
@@ -373,8 +501,14 @@ export async function PUT(request: Request) {
           emiratesId: data.emiratesId,
           whatsappNo: data.whatsappNo?.trim(),
           status: data.status,
-          exactLocation: data.exactLocation,
-          operatingHours: data.operatingHours,
+          exactLocation: data.exactLocation ? {
+            lat: parseFloat(data.exactLocation.lat as string),
+            lng: parseFloat(data.exactLocation.lng as string),
+          } : existingOutlet.exactLocation as any,
+          operatingHours: data.operatingHours ? {
+            open: data.operatingHours.open,
+            close: data.operatingHours.close,
+          } : existingOutlet.operatingHours as any,
         },
       });
 
