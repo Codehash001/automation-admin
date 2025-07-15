@@ -16,7 +16,10 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import 'leaflet/dist/leaflet.css'; // Static CSS import
+import 'mapbox-gl/dist/mapbox-gl.css';
+
+// Mapbox access token - you'll need to set this in your environment variables
+const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || 'your-mapbox-access-token-here';
 
 // Minimal Custom Time Picker Component
 const CustomTimePicker = ({ value, onChange, className, required }: { value: string; onChange: (value: string) => void; className?: string; required?: boolean }) => {
@@ -160,8 +163,8 @@ export default function OutletsPage() {
   const { toast } = useToast();
 
   const mapRef = useRef<HTMLDivElement>(null);
-  const leafletMap = useRef<L.Map | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
+  const mapboxMap = useRef<mapboxgl.Map | null>(null);
+  const markerRef = useRef<mapboxgl.Marker | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [mapInitialized, setMapInitialized] = useState(false); // Track if map is initialized
@@ -169,19 +172,25 @@ export default function OutletsPage() {
   useEffect(() => {
     if (typeof window !== 'undefined' && mapRef.current && !mapInitialized) {
       const initializeMap = () => {
-        // Dynamically import Leaflet to prevent SSR issues
-        import('leaflet').then((L) => {
+        // Dynamically import Mapbox GL JS to prevent SSR issues
+        import('mapbox-gl').then((mapboxModule) => {
           if (!mapRef.current) return;
           
-          leafletMap.current = L.default.map(mapRef.current).setView([25.276987, 55.296249], 13);
-          L.default.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-          }).addTo(leafletMap.current);
+          // Access the default export and set the access token
+          const mapboxgl = mapboxModule.default;
+          mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
+          
+          mapboxMap.current = new mapboxgl.Map({
+            container: mapRef.current,
+            style: 'mapbox://styles/mapbox/streets-v11',
+            center: [55.296249, 25.276987],
+            zoom: 13,
+          });
 
-          // Force map to resize and invalidate after a short delay
+          // Force map to resize after a short delay
           setTimeout(() => {
-            if (leafletMap.current) {
-              leafletMap.current.invalidateSize();
+            if (mapboxMap.current) {
+              mapboxMap.current.resize();
             }
           }, 100);
 
@@ -194,9 +203,9 @@ export default function OutletsPage() {
     }
 
     return () => {
-      if (leafletMap.current) {
-        leafletMap.current.remove();
-        leafletMap.current = null;
+      if (mapboxMap.current) {
+        mapboxMap.current.remove();
+        mapboxMap.current = null;
         setMapInitialized(false);
       }
     };
@@ -221,9 +230,9 @@ export default function OutletsPage() {
   useEffect(() => {
     if (!isDialogOpen) {
       // Clean up map when dialog closes
-      if (typeof window !== 'undefined' && leafletMap.current) {
-        leafletMap.current.remove();
-        leafletMap.current = null;
+      if (typeof window !== 'undefined' && mapboxMap.current) {
+        mapboxMap.current.remove();
+        mapboxMap.current = null;
         markerRef.current = null;
       }
       setSearchQuery('');
@@ -236,32 +245,29 @@ export default function OutletsPage() {
 
     // Initialize map after a short delay to ensure DOM is ready
     const timer = setTimeout(() => {
-      if (!mapRef.current || leafletMap.current) return;
+      if (!mapRef.current || mapboxMap.current) return;
 
-      // Dynamically import Leaflet to prevent SSR issues
-      import('leaflet').then((L) => {
+      // Dynamically import Mapbox GL JS to prevent SSR issues
+      import('mapbox-gl').then((mapboxModule) => {
         // Double-check that mapRef.current is still available
         if (!mapRef.current) return;
         
-        // Initialize the Leaflet map
-        leafletMap.current = L.default.map(mapRef.current).setView([25.2048, 55.2708], 10);
+        // Access the default export and set the access token
+        const mapboxgl = mapboxModule.default;
+        mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
         
-        // Add OpenStreetMap tiles
-        L.default.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: ' OpenStreetMap contributors'
-        }).addTo(leafletMap.current);
-
-        // Force map to resize and invalidate after initialization
-        setTimeout(() => {
-          if (leafletMap.current) {
-            leafletMap.current.invalidateSize();
-          }
-        }, 100);
-
+        // Initialize the Mapbox GL JS map
+        mapboxMap.current = new mapboxgl.Map({
+          container: mapRef.current,
+          style: 'mapbox://styles/mapbox/streets-v11',
+          center: [55.2708, 25.2048],
+          zoom: 10,
+        });
+        
         // Add click event to place marker
-        leafletMap.current.on('click', function (e: any) {
-          const lat = e.latlng.lat.toFixed(6);
-          const lng = e.latlng.lng.toFixed(6);
+        mapboxMap.current.on('click', function (e: any) {
+          const lat = e.lngLat.lat.toFixed(6);
+          const lng = e.lngLat.lng.toFixed(6);
 
           setFormData(prev => ({
             ...prev,
@@ -273,30 +279,30 @@ export default function OutletsPage() {
             markerRef.current.remove();
           }
 
-          // Add new marker with a custom icon to ensure visibility
-          const customIcon = L.default.icon({
-            iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34],
-            shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-            shadowSize: [41, 41]
-          });
-          markerRef.current = L.default.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current!);
-          if (leafletMap.current) {
-            const currentZoom = leafletMap.current.getZoom() || 13;
-            leafletMap.current.setView([lat, lng], currentZoom);
-          }
+          // Add new marker
+          if (mapboxMap.current) {
+            markerRef.current = new mapboxgl.Marker({ draggable: true })
+              .setLngLat([lng, lat])
+              .addTo(mapboxMap.current);
+            if (mapboxMap.current) {
+              const currentZoom = mapboxMap.current.getZoom() || 13;
+              mapboxMap.current.setZoom(currentZoom);
+              mapboxMap.current.setCenter([lng, lat]);
+            }
 
-          // Add drag event listener to update form data when marker is dragged
-          markerRef.current.on('dragend', function (e: any) {
-            const newLat = e.target.getLatLng().lat.toFixed(6);
-            const newLng = e.target.getLatLng().lng.toFixed(6);
-            setFormData(prev => ({
-              ...prev,
-              exactLocation: { lat: newLat, lng: newLng }
-            }));
-          });
+            // Add drag event listener to update form data when marker is dragged
+            if (markerRef.current) {
+              markerRef.current.on('dragend', function () {
+                const lngLat = markerRef.current!.getLngLat();
+                const newLat = lngLat.lat.toFixed(6);
+                const newLng = lngLat.lng.toFixed(6);
+                setFormData(prev => ({
+                  ...prev,
+                  exactLocation: { lat: newLat, lng: newLng }
+                }));
+              });
+            }
+          }
         });
 
         // Add marker if location already exists
@@ -304,29 +310,29 @@ export default function OutletsPage() {
           const lat = parseFloat(formData.exactLocation.lat);
           const lng = parseFloat(formData.exactLocation.lng);
           if (!isNaN(lat) && !isNaN(lng)) {
-            const customIcon = L.default.icon({
-              iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-              iconSize: [25, 41],
-              iconAnchor: [12, 41],
-              popupAnchor: [1, -34],
-              shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-              shadowSize: [41, 41]
-            });
-            markerRef.current = L.default.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current);
-            if (leafletMap.current) {
-              const currentZoom = leafletMap.current.getZoom() || 13;
-              leafletMap.current.setView([lat, lng], currentZoom);
-            }
+            if (mapboxMap.current) {
+              markerRef.current = new mapboxgl.Marker({ draggable: true })
+                .setLngLat([lng, lat])
+                .addTo(mapboxMap.current);
+              if (mapboxMap.current) {
+                const currentZoom = mapboxMap.current.getZoom() || 13;
+                mapboxMap.current.setZoom(currentZoom);
+                mapboxMap.current.setCenter([lng, lat]);
+              }
 
-            // Add drag event listener to update form data when marker is dragged
-            markerRef.current.on('dragend', function (e: any) {
-              const newLat = e.target.getLatLng().lat.toFixed(6);
-              const newLng = e.target.getLatLng().lng.toFixed(6);
-              setFormData(prev => ({
-                ...prev,
-                exactLocation: { lat: newLat, lng: newLng }
-              }));
-            });
+              // Add drag event listener to update form data when marker is dragged
+              if (markerRef.current) {
+                markerRef.current.on('dragend', function () {
+                  const lngLat = markerRef.current!.getLngLat();
+                  const newLat = lngLat.lat.toFixed(6);
+                  const newLng = lngLat.lng.toFixed(6);
+                  setFormData(prev => ({
+                    ...prev,
+                    exactLocation: { lat: newLat, lng: newLng }
+                  }));
+                });
+              }
+            }
           }
         }
       });
@@ -334,9 +340,9 @@ export default function OutletsPage() {
 
     return () => {
       clearTimeout(timer);
-      if (leafletMap.current) {
-        leafletMap.current.remove();
-        leafletMap.current = null;
+      if (mapboxMap.current) {
+        mapboxMap.current.remove();
+        mapboxMap.current = null;
         markerRef.current = null;
       }
     };
@@ -347,7 +353,7 @@ export default function OutletsPage() {
     // Only run on client side
     if (typeof window === 'undefined') return;
     
-    if (!leafletMap.current || !formData.exactLocation.lat || !formData.exactLocation.lng) return;
+    if (!mapboxMap.current || !formData.exactLocation.lat || !formData.exactLocation.lng) return;
 
     const lat = parseFloat(formData.exactLocation.lat);
     const lng = parseFloat(formData.exactLocation.lng);
@@ -355,42 +361,46 @@ export default function OutletsPage() {
     if (isNaN(lat) || isNaN(lng)) return;
 
     if (markerRef.current) {
-      markerRef.current.setLatLng([lat, lng]);
+      markerRef.current.setLngLat([lng, lat]);
     } else {
-      // Dynamically import Leaflet to prevent SSR issues
-      import('leaflet').then((L) => {
-        const customIcon = L.default.icon({
-          iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-          iconSize: [25, 41],
-          iconAnchor: [12, 41],
-          popupAnchor: [1, -34],
-          shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-          shadowSize: [41, 41]
-        });
-        markerRef.current = L.default.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current!);
-        if (leafletMap.current) {
-          const currentZoom = leafletMap.current.getZoom() || 13;
-          leafletMap.current.setView([lat, lng], currentZoom);
-        }
+      // Dynamically import Mapbox GL JS to prevent SSR issues
+      import('mapbox-gl').then((mapboxModule) => {
+        // Access the default export
+        const mapboxgl = mapboxModule.default;
+        
+        if (mapboxMap.current) {
+          markerRef.current = new mapboxgl.Marker({ draggable: true })
+            .setLngLat([lng, lat])
+            .addTo(mapboxMap.current);
+          if (mapboxMap.current) {
+            const currentZoom = mapboxMap.current.getZoom() || 13;
+            mapboxMap.current.setZoom(currentZoom);
+            mapboxMap.current.setCenter([lng, lat]);
+          }
 
-        // Add drag event listener to update form data when marker is dragged
-        markerRef.current.on('dragend', function (e: any) {
-          const newLat = e.target.getLatLng().lat.toFixed(6);
-          const newLng = e.target.getLatLng().lng.toFixed(6);
-          setFormData(prev => ({
-            ...prev,
-            exactLocation: { lat: newLat, lng: newLng }
-          }));
-        });
+          // Add drag event listener to update form data when marker is dragged
+          if (markerRef.current) {
+            markerRef.current.on('dragend', function () {
+              const lngLat = markerRef.current!.getLngLat();
+              const newLat = lngLat.lat.toFixed(6);
+              const newLng = lngLat.lng.toFixed(6);
+              setFormData(prev => ({
+                ...prev,
+                exactLocation: { lat: newLat, lng: newLng }
+              }));
+            });
+          }
+        }
       });
     }
-    if (leafletMap.current) {
-      const currentZoom = leafletMap.current.getZoom() || 13;
-      leafletMap.current.setView([lat, lng], currentZoom);
+    if (mapboxMap.current) {
+      const currentZoom = mapboxMap.current.getZoom() || 13;
+      mapboxMap.current.setZoom(currentZoom);
+      mapboxMap.current.setCenter([lng, lat]);
     }
   }, [formData.exactLocation]);
 
-  // Function to search for locations using Nominatim API
+  // Function to search for locations using Mapbox Geocoding API
   const searchLocation = async () => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
@@ -398,9 +408,23 @@ export default function OutletsPage() {
     }
 
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5&accept-language=en`);
+      const response = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(searchQuery)}.json?access_token=${MAPBOX_ACCESS_TOKEN}&limit=5&country=ae&proximity=55.296249,25.276987`
+      );
       const data = await response.json();
-      setSearchResults(data);
+      
+      if (data.features) {
+        // Transform Mapbox response to match our expected format
+        const transformedResults = data.features.map((feature: any) => ({
+          place_id: feature.id,
+          display_name: feature.place_name,
+          lat: feature.center[1].toString(),
+          lon: feature.center[0].toString(),
+        }));
+        setSearchResults(transformedResults);
+      } else {
+        setSearchResults([]);
+      }
     } catch (error) {
       console.error('Error searching location:', error);
       setSearchResults([]);
@@ -430,31 +454,38 @@ export default function OutletsPage() {
       markerRef.current.remove();
     }
 
-    // Add new marker using dynamic import
-    import('leaflet').then((L) => {
-      const customIcon = L.default.icon({
-        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-        shadowSize: [41, 41]
-      });
-      markerRef.current = L.default.marker([parseFloat(lat), parseFloat(lng)], { icon: customIcon, draggable: true }).addTo(leafletMap.current!);
-      if (leafletMap.current) {
-        const currentZoom = leafletMap.current.getZoom() || 13;
-        leafletMap.current.setView([parseFloat(lat), parseFloat(lng)], currentZoom);
-      }
+    // Add new marker
+    import('mapbox-gl').then((mapboxModule) => {
+      // Access the default export
+      const mapboxgl = mapboxModule.default;
+      
+      if (mapboxMap.current) {
+        if (!markerRef.current) {
+          markerRef.current = new mapboxgl.Marker({ draggable: true })
+            .setLngLat([parseFloat(lng), parseFloat(lat)])
+            .addTo(mapboxMap.current);
+        } else {
+          markerRef.current.setLngLat([parseFloat(lng), parseFloat(lat)]);
+        }
+        if (mapboxMap.current) {
+          const currentZoom = mapboxMap.current.getZoom() || 13;
+          mapboxMap.current.setZoom(currentZoom);
+          mapboxMap.current.setCenter([parseFloat(lng), parseFloat(lat)]);
+        }
 
-      // Add drag event listener to update form data when marker is dragged
-      markerRef.current.on('dragend', function (e: any) {
-        const newLat = e.target.getLatLng().lat.toFixed(6);
-        const newLng = e.target.getLatLng().lng.toFixed(6);
-        setFormData(prev => ({
-          ...prev,
-          exactLocation: { lat: newLat, lng: newLng }
-        }));
-      });
+        // Add drag event listener to update form data when marker is dragged
+        if (markerRef.current) {
+          markerRef.current.on('dragend', function () {
+            const lngLat = markerRef.current!.getLngLat();
+            const newLat = lngLat.lat.toFixed(6);
+            const newLng = lngLat.lng.toFixed(6);
+            setFormData(prev => ({
+              ...prev,
+              exactLocation: { lat: newLat, lng: newLng }
+            }));
+          });
+        }
+      }
     });
 
     // Clear search results
