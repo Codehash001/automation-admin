@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus, Pencil, Trash2, Search, AlertCircle, Utensils, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,13 +15,82 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Minimal Custom Time Picker Component
+const CustomTimePicker = ({ value, onChange, className, required }: { value: string; onChange: (value: string) => void; className?: string; required?: boolean }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [hours, setHours] = useState(value ? value.split(':')[0] : '00');
+  const [minutes, setMinutes] = useState(value ? value.split(':')[1] : '00');
+
+  useEffect(() => {
+    if (value) {
+      const [h, m] = value.split(':');
+      setHours(h || '00');
+      setMinutes(m || '00');
+    }
+  }, [value]);
+
+  const handleSelect = (h: string, m: string) => {
+    const newTime = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+    onChange(newTime);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className={`relative ${className || ''}`}>
+      <Input
+        value={`${hours}:${minutes}`}
+        onChange={() => {}} // Prevent direct typing, only selection
+        onClick={() => setIsOpen(true)}
+        className="cursor-pointer"
+        readOnly
+        required={required}
+      />
+      {isOpen && (
+        <div className="absolute z-50 bg-background border rounded-md shadow-lg p-2 mt-1 w-32">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Hours</label>
+              <Select value={hours} onValueChange={(val) => setHours(val)}>
+                <SelectTrigger className="w-full text-sm p-1 h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-40">
+                  {Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')).map((h) => (
+                    <SelectItem key={h} value={h}>{h}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1">Minutes</label>
+              <Select value={minutes} onValueChange={(val) => setMinutes(val)}>
+                <SelectTrigger className="w-full text-sm p-1 h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-40">
+                  {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map((m) => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <Button 
+            size="sm" 
+            className="mt-2 w-full" 
+            onClick={() => handleSelect(hours, minutes)}
+          >
+            Set
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Types
 type Outlet = {
@@ -44,6 +113,14 @@ type Outlet = {
     orders: number;
   };
   createdAt: string;
+  exactLocation: {
+    lat: string;
+    lng: string;
+  };
+  operatingHours: {
+    open: string;
+    close: string;
+  };
 };
 
 type Emirates = {
@@ -71,12 +148,245 @@ export default function OutletsPage() {
     cuisineIds: [] as string[],
     whatsappNo: '',
     status: 'OPEN' as 'OPEN' | 'BUSY' | 'CLOSED',
+    exactLocation: {
+      lat: '',
+      lng: '',
+    },
+    operatingHours: {
+      open: '',
+      close: '',
+    },
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isEmirateDialogOpen, setIsEmirateDialogOpen] = useState(false);
-  const [newEmirateName, setNewEmirateName] = useState('');
-  const [isCreatingEmirate, setIsCreatingEmirate] = useState(false);
   const { toast } = useToast();
+
+  const mapRef = useRef<HTMLDivElement>(null);
+  const leafletMap = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (selectedOutlet) {
+      setFormData({
+        name: selectedOutlet.name,
+        emiratesId: selectedOutlet.emirates.id.toString(),
+        cuisineIds: selectedOutlet.cuisines.map(c => c.cuisine.id.toString()),
+        whatsappNo: selectedOutlet.whatsappNo,
+        status: selectedOutlet.status,
+        exactLocation: selectedOutlet.exactLocation || { lat: '', lng: '' },
+        operatingHours: selectedOutlet.operatingHours || { open: '', close: '' },
+      });
+    } else {
+      resetForm();
+    }
+  }, [selectedOutlet]);
+
+  useEffect(() => {
+    if (!isDialogOpen) {
+      // Clean up map when dialog closes
+      if (leafletMap.current) {
+        leafletMap.current.remove();
+        leafletMap.current = null;
+        markerRef.current = null;
+      }
+      setSearchQuery('');
+      setSearchResults([]);
+      return;
+    }
+
+    // Initialize map after a short delay to ensure DOM is ready
+    const timer = setTimeout(() => {
+      if (!mapRef.current || leafletMap.current) return;
+
+      // Initialize map
+      leafletMap.current = L.map(mapRef.current).setView([25.276987, 55.296249], 10); // Default to Dubai
+
+      // Add OpenStreetMap tiles with English attribution
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
+      }).addTo(leafletMap.current);
+
+      // Add click event to place marker
+      leafletMap.current.on('click', function (e: any) {
+        const lat = e.latlng.lat.toFixed(6);
+        const lng = e.latlng.lng.toFixed(6);
+
+        setFormData(prev => ({
+          ...prev,
+          exactLocation: { lat, lng }
+        }));
+
+        // Remove old marker if it exists
+        if (markerRef.current) {
+          markerRef.current.remove();
+        }
+
+        // Add new marker with a custom icon to ensure visibility
+        const customIcon = L.icon({
+          iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+          shadowSize: [41, 41]
+        });
+        markerRef.current = L.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current!);
+        const currentZoom = leafletMap.current!.getZoom() || 13;
+        leafletMap.current!.setView([lat, lng], currentZoom);
+
+        // Add drag event listener to update form data when marker is dragged
+        markerRef.current.on('dragend', function (e: any) {
+          const newLat = e.target.getLatLng().lat.toFixed(6);
+          const newLng = e.target.getLatLng().lng.toFixed(6);
+          setFormData(prev => ({
+            ...prev,
+            exactLocation: { lat: newLat, lng: newLng }
+          }));
+        });
+      });
+
+      // Add marker if location already exists
+      if (formData.exactLocation.lat && formData.exactLocation.lng) {
+        const lat = parseFloat(formData.exactLocation.lat);
+        const lng = parseFloat(formData.exactLocation.lng);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          const customIcon = L.icon({
+            iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+            shadowSize: [41, 41]
+          });
+          markerRef.current = L.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current);
+          const currentZoom = leafletMap.current.getZoom() || 13;
+          leafletMap.current.setView([lat, lng], currentZoom);
+
+          // Add drag event listener to update form data when marker is dragged
+          markerRef.current.on('dragend', function (e: any) {
+            const newLat = e.target.getLatLng().lat.toFixed(6);
+            const newLng = e.target.getLatLng().lng.toFixed(6);
+            setFormData(prev => ({
+              ...prev,
+              exactLocation: { lat: newLat, lng: newLng }
+            }));
+          });
+        }
+      }
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      if (leafletMap.current) {
+        leafletMap.current.remove();
+        leafletMap.current = null;
+        markerRef.current = null;
+      }
+    };
+  }, [isDialogOpen, formData.exactLocation]);
+
+  // Update map marker when location changes
+  useEffect(() => {
+    if (!leafletMap.current || !formData.exactLocation.lat || !formData.exactLocation.lng) return;
+
+    const lat = parseFloat(formData.exactLocation.lat);
+    const lng = parseFloat(formData.exactLocation.lng);
+
+    if (isNaN(lat) || isNaN(lng)) return;
+
+    if (markerRef.current) {
+      markerRef.current.setLatLng([lat, lng]);
+    } else {
+      const customIcon = L.icon({
+        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+        shadowSize: [41, 41]
+      });
+      markerRef.current = L.marker([lat, lng], { icon: customIcon, draggable: true }).addTo(leafletMap.current);
+
+      // Add drag event listener to update form data when marker is dragged
+      markerRef.current.on('dragend', function (e: any) {
+        const newLat = e.target.getLatLng().lat.toFixed(6);
+        const newLng = e.target.getLatLng().lng.toFixed(6);
+        setFormData(prev => ({
+          ...prev,
+          exactLocation: { lat: newLat, lng: newLng }
+        }));
+      });
+    }
+    const currentZoom = leafletMap.current.getZoom() || 13;
+    leafletMap.current.setView([lat, lng], currentZoom);
+  }, [formData.exactLocation]);
+
+  // Function to search for locations using Nominatim API
+  const searchLocation = async () => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5&accept-language=en`);
+      const data = await response.json();
+      setSearchResults(data);
+    } catch (error) {
+      console.error('Error searching location:', error);
+      setSearchResults([]);
+      toast({
+        title: 'Error',
+        description: 'Failed to search for location. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Function to select a location from search results
+  const selectLocation = (place: any) => {
+    const lat = parseFloat(place.lat).toFixed(6);
+    const lng = parseFloat(place.lon).toFixed(6);
+
+    setFormData(prev => ({
+      ...prev,
+      exactLocation: { lat, lng }
+    }));
+
+    // Remove old marker if it exists
+    if (markerRef.current) {
+      markerRef.current.remove();
+    }
+
+    // Add new marker
+    const customIcon = L.icon({
+      iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      shadowSize: [41, 41]
+    });
+    markerRef.current = L.marker([parseFloat(lat), parseFloat(lng)], { icon: customIcon, draggable: true }).addTo(leafletMap.current!);
+    const currentZoom = leafletMap.current!.getZoom() || 13;
+    leafletMap.current!.setView([parseFloat(lat), parseFloat(lng)], currentZoom);
+
+    // Add drag event listener to update form data when marker is dragged
+    markerRef.current.on('dragend', function (e: any) {
+      const newLat = e.target.getLatLng().lat.toFixed(6);
+      const newLng = e.target.getLatLng().lng.toFixed(6);
+      setFormData(prev => ({
+        ...prev,
+        exactLocation: { lat: newLat, lng: newLng }
+      }));
+    });
+
+    // Clear search results
+    setSearchQuery('');
+    setSearchResults([]);
+  };
 
   // Fetch data
   const fetchData = async () => {
@@ -164,6 +474,14 @@ export default function OutletsPage() {
       cuisineIds: [],
       whatsappNo: '',
       status: 'OPEN',
+      exactLocation: {
+        lat: '',
+        lng: '',
+      },
+      operatingHours: {
+        open: '',
+        close: '',
+      },
     });
     setSelectedOutlet(null);
   };
@@ -177,6 +495,8 @@ export default function OutletsPage() {
       cuisineIds: outlet.cuisines.map(c => c.cuisine.id.toString()),
       whatsappNo: outlet.whatsappNo,
       status: outlet.status,
+      exactLocation: outlet.exactLocation || { lat: '', lng: '' },
+      operatingHours: outlet.operatingHours || { open: '', close: '' },
     });
     setIsDialogOpen(true);
   };
@@ -219,6 +539,24 @@ export default function OutletsPage() {
       return;
     }
 
+    if (!formData.exactLocation.lat || !formData.exactLocation.lng) {
+      toast({
+        title: 'Error',
+        description: 'Please enter the exact location',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!formData.operatingHours.open || !formData.operatingHours.close) {
+      toast({
+        title: 'Error',
+        description: 'Please enter the operating hours',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -233,6 +571,14 @@ export default function OutletsPage() {
         cuisineIds: formData.cuisineIds.map(id => parseInt(id)),
         whatsappNo: formData.whatsappNo.trim(),
         status: formData.status,
+        exactLocation: {
+          lat: parseFloat(formData.exactLocation.lat),
+          lng: parseFloat(formData.exactLocation.lng),
+        },
+        operatingHours: {
+          open: formData.operatingHours.open,
+          close: formData.operatingHours.close,
+        },
       };
 
       const response = await fetch(url, {
@@ -307,95 +653,6 @@ export default function OutletsPage() {
     }
   };
 
-  // Create new emirate
-  const handleCreateEmirate = async () => {
-    if (!newEmirateName.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Please enter an emirate name',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsCreatingEmirate(true);
-    try {
-      const response = await fetch('/api/emirates', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name: newEmirateName.trim() }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 409) {
-          // Handle duplicate emirate
-          const existingEmirate = emirates.find(e => 
-            e.name.toLowerCase() === newEmirateName.trim().toLowerCase()
-          );
-          
-          if (existingEmirate) {
-            setFormData(prev => ({
-              ...prev,
-              emiratesId: existingEmirate.id.toString(),
-            }));
-          }
-          
-          toast({
-            title: 'Emirate Exists',
-            description: 'This emirate already exists',
-            variant: 'default',
-          });
-          return;
-        }
-        throw new Error(data.error || 'Failed to create emirate');
-      }
-
-      // Update emirates list and select the new emirate
-      const newEmirate = data;
-      setEmirates(prev => [...prev, newEmirate]);
-      
-      setFormData(prev => ({
-        ...prev,
-        emiratesId: newEmirate.id.toString(),
-      }));
-      
-      setNewEmirateName('');
-      setIsEmirateDialogOpen(false);
-      
-      toast({
-        title: 'Success',
-        description: 'Emirate created successfully',
-      });
-    } catch (error) {
-      console.error('Error creating emirate:', error);
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to create emirate',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsCreatingEmirate(false);
-    }
-  };
-
-  // Get status badge variant
-  const getStatusVariant = (status: string) => {
-    switch (status) {
-      case 'OPEN':
-        return 'default';
-      case 'BUSY':
-        return 'warning';
-      case 'CLOSED':
-        return 'destructive';
-      default:
-        return 'outline';
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -438,19 +695,21 @@ export default function OutletsPage() {
               <TableHead>Cuisines</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Contact</TableHead>
+              <TableHead>Location (Lat, Lng)</TableHead>
+              <TableHead>Operating Hours</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8">
+                <TableCell colSpan={8} className="text-center py-8">
                   Loading outlets...
                 </TableCell>
               </TableRow>
             ) : filteredOutlets.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8">
+                <TableCell colSpan={8} className="text-center py-8">
                   {searchTerm ? 'No matching outlets found' : 'No outlets added yet'}
                 </TableCell>
               </TableRow>
@@ -477,6 +736,23 @@ export default function OutletsPage() {
                       <Phone className="h-3 w-3 text-muted-foreground" />
                       <span className="text-sm">{outlet.whatsappNo}</span>
                     </div>
+                  </TableCell>
+                  <TableCell className="max-w-[150px] truncate">
+                    {outlet.exactLocation && outlet.exactLocation.lat && outlet.exactLocation.lng ? (
+                      <a 
+                        href={`https://www.google.com/maps?q=${outlet.exactLocation.lat},${outlet.exactLocation.lng}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-blue-500 hover:underline"
+                      >
+                        {outlet.exactLocation.lat}, {outlet.exactLocation.lng}
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground">Not set</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {outlet.operatingHours ? `${outlet.operatingHours.open} - ${outlet.operatingHours.close}` : 'N/A'}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -517,18 +793,15 @@ export default function OutletsPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
           <form onSubmit={handleSubmit}>
             <DialogHeader>
               <DialogTitle>{selectedOutlet ? 'Edit Outlet' : 'Add New Outlet'}</DialogTitle>
-              <DialogDescription>
-                {selectedOutlet ? 'Update the outlet details' : 'Fill in the details for the new outlet'}
-              </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
+            <div className="space-y-4 py-4">
               {/* Outlet Name */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">Outlet Name</label>
+                <label className="text-sm font-medium">Outlet Name <span className="text-red-500">*</span></label>
                 <Input
                   name="name"
                   value={formData.name}
@@ -540,17 +813,8 @@ export default function OutletsPage() {
 
               {/* Emirates Selection */}
               <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="text-sm font-medium">Emirates</label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-sm text-primary"
-                    onClick={() => setIsEmirateDialogOpen(true)}
-                  >
-                    + Add New
-                  </Button>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium">Emirate <span className="text-red-500">*</span></label>
                 </div>
                 <Select
                   value={formData.emiratesId}
@@ -570,120 +834,147 @@ export default function OutletsPage() {
                 </Select>
               </div>
 
-              {/* Cuisines Selection */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Cuisines</label>
-                <div className="border rounded-md p-2 max-h-40 overflow-y-auto">
-                  {cuisines.map((cuisine) => (
-                    <div key={cuisine.id} className="flex items-center space-x-2 p-1">
-                      <input
-                        type="checkbox"
-                        id={`cuisine-${cuisine.id}`}
-                        checked={formData.cuisineIds.includes(cuisine.id.toString())}
-                        onChange={(e) => handleCuisineChange(cuisine.id.toString(), e.target.checked)}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <label htmlFor={`cuisine-${cuisine.id}`} className="text-sm">
-                        {cuisine.name}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-                {formData.cuisineIds.length === 0 && (
-                  <p className="text-xs text-red-500">Please select at least one cuisine</p>
-                )}
-              </div>
-
               {/* WhatsApp Number */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">WhatsApp Number</label>
+                <label className="text-sm font-medium">WhatsApp Number <span className="text-red-500">*</span></label>
                 <Input
                   name="whatsappNo"
                   value={formData.whatsappNo}
                   onChange={handleInputChange}
-                  placeholder="Enter WhatsApp number with country code"
+                  placeholder="+971xxxxxxxxx"
                   required
                 />
+              </div>
+
+              {/* Map for Location Selection */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Exact Location (Lat, Lng) <span className="text-red-500">*</span></label>
+                <div className="flex gap-2 items-center mb-2">
+                  <Input
+                    name="exactLocation.lat"
+                    value={formData.exactLocation.lat}
+                    onChange={handleInputChange}
+                    placeholder="Latitude"
+                    required
+                  />
+                  <Input
+                    name="exactLocation.lng"
+                    value={formData.exactLocation.lng}
+                    onChange={handleInputChange}
+                    placeholder="Longitude"
+                    required
+                  />
+                </div>
+                <div className="flex gap-2 items-center mb-2">
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search for a location..."
+                  />
+                  <Button type="button" onClick={searchLocation}>Search</Button>
+                </div>
+                {searchResults.length > 0 && (
+                  <div className="border rounded-md p-2 max-h-40 overflow-y-auto mb-2">
+                    {searchResults.map((place) => (
+                      <div
+                        key={place.place_id}
+                        className="p-2 hover:bg-gray-100 cursor-pointer"
+                        onClick={() => selectLocation(place)}
+                      >
+                        {place.display_name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div ref={mapRef} className="h-64 w-full rounded-md border border-gray-200" />
+                <p className="text-xs text-muted-foreground">Click on the map to set the outlet location</p>
+              </div>
+
+              {/* Operating Hours */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Operating Hours <span className="text-red-500">*</span></label>
+                <div className="flex gap-2 items-center">
+                  <div className="flex-1">
+                    <label className="text-xs text-muted-foreground">Open Time</label>
+                    <CustomTimePicker
+                      value={formData.operatingHours.open}
+                      onChange={(value) => setFormData(prev => ({ ...prev, operatingHours: { ...prev.operatingHours, open: value } }))}
+                      className="w-full"
+                      required
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-muted-foreground">Close Time</label>
+                    <CustomTimePicker
+                      value={formData.operatingHours.close}
+                      onChange={(value) => setFormData(prev => ({ ...prev, operatingHours: { ...prev.operatingHours, close: value } }))}
+                      className="w-full"
+                      required
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Status */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Status</label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value) => handleSelectChange('status', value as any)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="OPEN">Open</SelectItem>
-                    <SelectItem value="BUSY">Busy</SelectItem>
-                    <SelectItem value="CLOSED">Closed</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={formData.status === 'OPEN'}
+                      onChange={() => handleSelectChange('status', 'OPEN')}
+                      className="text-primary focus:ring-primary"
+                    />
+                    OPEN
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={formData.status === 'BUSY'}
+                      onChange={() => handleSelectChange('status', 'BUSY')}
+                      className="text-primary focus:ring-primary"
+                    />
+                    BUSY
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={formData.status === 'CLOSED'}
+                      onChange={() => handleSelectChange('status', 'CLOSED')}
+                      className="text-primary focus:ring-primary"
+                    />
+                    CLOSED
+                  </label>
+                </div>
+              </div>
+
+              {/* Cuisines */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Cuisines <span className="text-red-500">*</span></label>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[200px] overflow-y-auto p-1 border rounded-md bg-background">
+                  {cuisines.map((cuisine) => (
+                    <label key={cuisine.id} className="flex items-center gap-2 cursor-pointer truncate">
+                      <input
+                        type="checkbox"
+                        checked={formData.cuisineIds.includes(cuisine.id.toString())}
+                        onChange={() => handleCuisineChange(cuisine.id.toString(), !formData.cuisineIds.includes(cuisine.id.toString()))}
+                      />
+                      <span className="truncate">{cuisine.name}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
             </div>
             <DialogFooter>
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => {
-                  setIsDialogOpen(false);
-                  resetForm();
-                }}
-                disabled={isSubmitting}
-              >
+              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Saving...' : 'Save'}
+              <Button type="submit" onClick={handleSubmit} disabled={isSubmitting}>
+                {isSubmitting ? 'Saving...' : selectedOutlet ? 'Save Changes' : 'Add Outlet'}
               </Button>
             </DialogFooter>
           </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Emirate Dialog */}
-      <Dialog open={isEmirateDialogOpen} onOpenChange={setIsEmirateDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Emirate</DialogTitle>
-            <DialogDescription>
-              Enter the name of the new emirate.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="emirate-name">
-                Emirate Name
-              </label>
-              <Input
-                id="emirate-name"
-                value={newEmirateName}
-                onChange={(e) => setNewEmirateName(e.target.value)}
-                placeholder="e.g. Dubai, Abu Dhabi"
-                disabled={isCreatingEmirate}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsEmirateDialogOpen(false)}
-              disabled={isCreatingEmirate}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleCreateEmirate}
-              disabled={!newEmirateName.trim() || isCreatingEmirate}
-            >
-              {isCreatingEmirate ? 'Creating...' : 'Create'}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 

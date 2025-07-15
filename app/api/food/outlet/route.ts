@@ -7,6 +7,8 @@ type OutletData = {
   cuisineIds: number[];
   whatsappNo: string;
   status: 'OPEN' | 'BUSY' | 'CLOSED';
+  exactLocation: { lat: number; lng: number };
+  operatingHours: { open: string; close: string };
 };
 
 export async function GET(request: Request) {
@@ -17,6 +19,8 @@ export async function GET(request: Request) {
     const cuisineId = searchParams.get('cuisineId');
     const responseType = searchParams.get('responseType');
     const outletName = searchParams.get('name');
+    const lat = searchParams.get('lat');
+    const lng = searchParams.get('lng');
 
     // Get outlet ID by name
     if (outletName) {
@@ -104,6 +108,31 @@ export async function GET(request: Request) {
       };
     }
 
+    if (lat && lng) {
+      const userLocation = {
+        lat: parseFloat(lat as string),
+        lng: parseFloat(lng as string),
+      };
+
+      // Filter outlets within 10km radius
+      where.exactLocation = {
+        $near: {
+          $geometry: {
+            type: 'Point',
+            coordinates: [userLocation.lng, userLocation.lat]
+          },
+          $maxDistance: 10000 // 10km radius
+        }
+      };
+
+      // Filter outlets where current time is within operating hours
+      const currentTime = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'Asia/Dubai' });
+      where.operatingHours = {
+        open: { $lte: currentTime },
+        close: { $gte: currentTime }
+      };
+    }
+
     // Get all outlets with relationships
     const outlets = await prisma.outlet.findMany({
       where,
@@ -162,9 +191,9 @@ export async function POST(request: Request) {
     const data: OutletData = await request.json();
     
     // Validate required fields
-    if (!data.name || !data.emiratesId || !data.cuisineIds || !data.whatsappNo) {
+    if (!data.name || !data.emiratesId || !data.cuisineIds || !data.whatsappNo || !data.exactLocation || !data.operatingHours) {
       return NextResponse.json(
-        { error: 'Name, emirate, cuisines, and WhatsApp number are required' },
+        { error: 'Name, emirate, cuisines, WhatsApp number, exact location, and operating hours are required' },
         { status: 400 }
       );
     }
@@ -218,6 +247,8 @@ export async function POST(request: Request) {
           emiratesId: data.emiratesId,
           whatsappNo: data.whatsappNo.trim(),
           status: data.status || 'OPEN',
+          exactLocation: data.exactLocation,
+          operatingHours: data.operatingHours,
           cuisines: {
             create: data.cuisineIds.map(cuisineId => ({
               cuisine: { connect: { id: cuisineId } }
@@ -342,6 +373,8 @@ export async function PUT(request: Request) {
           emiratesId: data.emiratesId,
           whatsappNo: data.whatsappNo?.trim(),
           status: data.status,
+          exactLocation: data.exactLocation,
+          operatingHours: data.operatingHours,
         },
       });
 

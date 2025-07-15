@@ -52,6 +52,11 @@ export default function DashboardLayout({
       icon: <ShoppingCart size={18} />,
     },
     {
+      name: 'Deliveries',
+      href: '/dashboard/deliveries',
+      icon: <Truck size={18} />,
+    },
+    {
       name: 'Vendors',
       href: '/dashboard/vendors',
       icon: <LayoutDashboard size={18} />,

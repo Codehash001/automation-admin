@@ -39,6 +39,8 @@ model Outlet {
   emiratesId   Int
   whatsappNo   String
   status       OutletStatus
+  exactLocation Json        @default("{\"lat\": 0.0, \"lng\": 0.0}") // Default to a neutral location
+  operatingHours Json       @default("{\"open\": \"00:00\", \"close\": \"00:00\"}") // Default to closed hours
   menus        Menu[]
   orders       Order[]
   cuisines     OutletCuisine[]
@@ -154,9 +156,9 @@ model Delivery {
   id        Int      @id @default(autoincrement())
   order     Order    @relation(fields: [orderId], references: [id])
   orderId   Int      @unique
-  driver    Driver   @relation(fields: [driverId], references: [id])
-  driverId  Int
-  status    String   // e.g., PENDING, IN_TRANSIT, DELIVERED
+  driver    Driver?  @relation(fields: [driverId], references: [id])
+  driverId  Int?     // Optional driver reference
+  status    String   @default("PENDING") // Delivery status: PENDING, IN_TRANSIT, DELIVERED
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
