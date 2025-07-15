@@ -99,21 +99,21 @@ export async function POST(request: Request) {
     }));
 
     // 5. Start notifying riders one by one with timeout
-    startRiderNotificationLoop(
-      delivery.id, 
-      driversData, 
-      order.id,
-      order.customer.whatsappNumber,
-      order.outlet.whatsappNo,
-      order.deliveryLocation,
-      order.deliveryAddress
-    );
+    // startRiderNotificationLoop(
+    //   delivery.id, 
+    //   driversData, 
+    //   order.id,
+    //   order.customer.whatsappNumber,
+    //   order.outlet.whatsappNo,
+    //   order.deliveryLocation,
+    //   order.deliveryAddress
+    // );
 
     return NextResponse.json({
       success: true,
       message: 'Delivery created and rider notification started',
       deliveryId: delivery.id,
-      totalRidersAvailable: driversData.length
+      riders: driversData
     });
 
   } catch (error) {
