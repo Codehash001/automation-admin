@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import { activeNotifications, riderDeliveryMapping } from '../route';
+import { activeNotifications, riderDeliveryMapping } from '../utils';
 
 const prisma = new PrismaClient();
 

@@ -1,30 +1,31 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { activeNotifications, riderDeliveryMapping } from './utils';
 
 const prisma = new PrismaClient();
 
 // Store active notification loops for tracking
-const activeNotifications = new Map<number, {
-  timeoutId: NodeJS.Timeout,
-  currentIndex: number,
-  drivers: Array<{ id: number; phone: string; name: string }>
-}>();
+// const activeNotifications = new Map<number, {
+//   timeoutId: NodeJS.Timeout,
+//   currentIndex: number,
+//   drivers: Array<{ id: number; phone: string; name: string }>
+// }>();
 
 // Store temporary mapping of rider phone to delivery ID (expires after 5 minutes)
-const riderDeliveryMapping = new Map<string, {
-  deliveryId: number,
-  expiresAt: Date
-}>();
+// const riderDeliveryMapping = new Map<string, {
+//   deliveryId: number,
+//   expiresAt: Date
+// }>();
 
 // Clean up expired mappings every minute
-setInterval(() => {
-  const now = new Date();
-  Array.from(riderDeliveryMapping.entries()).forEach(([phone, data]) => {
-    if (data.expiresAt < now) {
-      riderDeliveryMapping.delete(phone);
-    }
-  });
-}, 60000);
+// setInterval(() => {
+//   const now = new Date();
+//   Array.from(riderDeliveryMapping.entries()).forEach(([phone, data]) => {
+//     if (data.expiresAt < now) {
+//       riderDeliveryMapping.delete(phone);
+//     }
+//   });
+// }, 60000);
 
 export async function POST(request: Request) {
   try {
@@ -276,6 +277,3 @@ export async function GET(request: Request) {
     );
   }
 }
-
-// Export for use in rider route
-export { activeNotifications, riderDeliveryMapping };
