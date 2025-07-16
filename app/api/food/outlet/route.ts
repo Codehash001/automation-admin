@@ -10,7 +10,8 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   const lat2Rad = lat2 * Math.PI / 180;
 
   const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1Rad) * Math.cos(lat2Rad);
+    Math.cos(lat1Rad) * Math.cos(lat2Rad) * 
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   const distance = R * c;
 
@@ -141,6 +142,8 @@ export async function GET(request: Request) {
         lng: parseFloat(lng as string),
       };
 
+      console.log('User location:', userLocation);
+
       // Get all outlets first, then filter by distance and operating hours
       const allOutlets = await prisma.outlet.findMany({
         where: {
@@ -164,6 +167,8 @@ export async function GET(request: Request) {
         orderBy: { name: 'asc' }
       });
 
+      console.log(`Found ${allOutlets.length} open outlets before distance filtering`);
+
       // Get current time in Dubai timezone
       const now = new Date();
       const currentTime = now.toLocaleTimeString('en-US', { 
@@ -173,6 +178,8 @@ export async function GET(request: Request) {
         minute: '2-digit'
       });
 
+      console.log('Current time in Dubai:', currentTime);
+
       // Filter outlets within 5km radius and check operating hours
       const availableOutlets = allOutlets.filter(outlet => {
         // Cast JSON fields to proper types
@@ -181,6 +188,17 @@ export async function GET(request: Request) {
 
         // Skip outlets without location data
         if (!location || !location.lat || !location.lng) {
+          console.log(`Outlet ${outlet.name} skipped: missing location data`);
+          return false;
+        }
+
+        // Ensure lat/lng are numbers
+        const outletLat = typeof location.lat === 'string' ? parseFloat(location.lat) : location.lat;
+        const outletLng = typeof location.lng === 'string' ? parseFloat(location.lng) : location.lng;
+
+        // Validate coordinates
+        if (isNaN(outletLat) || isNaN(outletLng)) {
+          console.log(`Outlet ${outlet.name} skipped: invalid coordinates`, { lat: location.lat, lng: location.lng });
           return false;
         }
 
@@ -188,9 +206,11 @@ export async function GET(request: Request) {
         const distance = calculateDistance(
           userLocation.lat, 
           userLocation.lng,
-          parseFloat(location.lat.toString()), 
-          parseFloat(location.lng.toString())
+          outletLat, 
+          outletLng
         );
+
+        console.log(`Outlet ${outlet.name}: distance = ${distance.toFixed(2)}km, location = [${outletLat}, ${outletLng}]`);
 
         // Check if within 5km radius
         const withinRadius = distance <= 5;
@@ -209,22 +229,32 @@ export async function GET(request: Request) {
             // Same day (e.g., 09:00 - 22:00)
             isCurrentlyOpen = currentTime >= openTime && currentTime <= closeTime;
           }
+          
+          console.log(`Outlet ${outlet.name}: hours ${openTime}-${closeTime}, currently open: ${isCurrentlyOpen}`);
         }
 
-        return withinRadius && isCurrentlyOpen;
+        const isAvailable = withinRadius && isCurrentlyOpen;
+        console.log(`Outlet ${outlet.name}: within radius: ${withinRadius}, currently open: ${isCurrentlyOpen}, available: ${isAvailable}`);
+
+        return isAvailable;
       });
+
+      console.log(`Found ${availableOutlets.length} available outlets within 5km radius`);
 
       // Sort by distance (closest first) and add distance info
       const sortedOutlets = availableOutlets
         .map(outlet => {
           const location = outlet.exactLocation as LocationData;
+          const outletLat = typeof location.lat === 'string' ? parseFloat(location.lat) : location.lat;
+          const outletLng = typeof location.lng === 'string' ? parseFloat(location.lng) : location.lng;
+          
           return {
             ...outlet,
             distance: parseFloat(calculateDistance(
               userLocation.lat, 
               userLocation.lng,
-              parseFloat(location.lat.toString()), 
-              parseFloat(location.lng.toString())
+              outletLat, 
+              outletLng
             ).toFixed(2))
           };
         })

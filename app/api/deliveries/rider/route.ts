@@ -1,13 +1,31 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import { activeNotifications, riderDeliveryMapping } from '../utils';
+import { activeNotifications } from '../utils';
 
 const prisma = new PrismaClient();
 
 // Handle rider response using phone number only
 export async function PATCH(request: Request) {
   try {
-    const { status, phone } = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (jsonError) {
+      console.error('Invalid JSON received:', jsonError);
+      return NextResponse.json(
+        { 
+          error: 'Invalid JSON format. Please ensure phone number is properly quoted.',
+          details: 'Example: {"status":"REVIEWING","phone":"+1234567890"}'
+        },
+        { status: 400 }
+      );
+    }
+
+    const { status, phone } = body;
+
+    console.log(`=== RIDER PATCH REQUEST ===`);
+    console.log(`Received status: ${status}`);
+    console.log(`Received phone: ${phone}`);
 
     if (!phone) {
       return NextResponse.json(
@@ -16,20 +34,16 @@ export async function PATCH(request: Request) {
       );
     }
 
-    if (!status) {
-      return NextResponse.json(
-        { error: 'Status is required' },
-        { status: 400 }
-      );
-    }
-
     // Convert phone to standard format
     const riderPhone = phone.startsWith('+') ? phone : `+${phone}`;
+    console.log(`Normalized phone: ${riderPhone}`);
 
     // Find the rider
     const rider = await prisma.driver.findUnique({
       where: { phone: riderPhone }
     });
+
+    console.log(`Rider found:`, rider ? `ID: ${rider.id}, Name: ${rider.name}` : 'NOT FOUND');
 
     if (!rider) {
       return NextResponse.json(
@@ -38,16 +52,54 @@ export async function PATCH(request: Request) {
       );
     }
 
-    // Get the delivery ID from mapping
-    const mapping = riderDeliveryMapping.get(riderPhone);
+    // Get the delivery ID from database mapping
+    console.log(`=== DATABASE MAPPING LOOKUP ===`);
+    console.log(`Looking up mapping for phone: ${riderPhone}`);
+    
+    const mapping = await prisma.riderDeliveryMapping.findUnique({
+      where: { phone: riderPhone }
+    });
+    
+    console.log(`Mapping found:`, mapping);
+    
+    if (mapping) {
+      console.log(`Mapping details:`, {
+        deliveryId: mapping.deliveryId,
+        expiresAt: mapping.expiresAt,
+        isExpired: mapping.expiresAt < new Date(),
+        currentTime: new Date()
+      });
+    }
+    
     if (!mapping || mapping.expiresAt < new Date()) {
+      console.log(`=== MAPPING FAILED ===`);
+      console.log(`Mapping exists: ${!!mapping}`);
+      if (mapping) {
+        console.log(`Mapping expired: ${mapping.expiresAt < new Date()}`);
+        console.log(`Expiry time: ${mapping.expiresAt}`);
+        console.log(`Current time: ${new Date()}`);
+        
+        // Clean up expired mapping
+        await prisma.riderDeliveryMapping.delete({
+          where: { phone: riderPhone }
+        });
+      }
+      
       return NextResponse.json(
-        { error: 'No active delivery found for this rider' },
+        { 
+          error: 'No active delivery found for this rider',
+          debug: {
+            phone: riderPhone,
+            mappingExists: !!mapping,
+            mappingExpired: mapping ? mapping.expiresAt < new Date() : null
+          }
+        },
         { status: 404 }
       );
     }
 
     const deliveryId = mapping.deliveryId;
+    console.log(`Found delivery ID: ${deliveryId}`);
 
     // Find the delivery with complete order details
     const delivery = await prisma.delivery.findUnique({
@@ -75,6 +127,11 @@ export async function PATCH(request: Request) {
 
     // Handle REVIEWING status - return order details
     if (status === 'REVIEWING') {
+      // Parse location string to get lat/lng separately
+      const locationParts = delivery.order.deliveryLocation?.split(',') || [];
+      const latitude = locationParts[0]?.trim() || '';
+      const longitude = locationParts[1]?.trim() || '';
+      
       return NextResponse.json({
         success: true,
         message: 'Order details retrieved for review',
@@ -82,6 +139,8 @@ export async function PATCH(request: Request) {
           orderId: delivery.order.id,
           customerLocation: {
             location: delivery.order.deliveryLocation, // GPS coordinates as "lat,lng" string
+            latitude: latitude,
+            longitude: longitude,
             address: delivery.order.deliveryAddress,   // Text address for reference
             customerName: delivery.order.customer.name,
             customerPhone: delivery.order.customer.whatsappNumber,
@@ -123,8 +182,10 @@ export async function PATCH(request: Request) {
         activeNotifications.delete(deliveryId);
       }
 
-      // Remove from mapping
-      riderDeliveryMapping.delete(riderPhone);
+      // Remove from database mapping
+      await prisma.riderDeliveryMapping.delete({
+        where: { phone: riderPhone }
+      });
 
       // Assign delivery to rider
       await prisma.delivery.update({
@@ -149,8 +210,10 @@ export async function PATCH(request: Request) {
       });
 
     } else if (status === 'DECLINED') {
-      // Remove from mapping
-      riderDeliveryMapping.delete(riderPhone);
+      // Remove from database mapping
+      await prisma.riderDeliveryMapping.delete({
+        where: { phone: riderPhone }
+      });
 
       // Check if this delivery is still pending
       if (delivery.status !== 'PENDING') {
@@ -215,15 +278,30 @@ export async function PATCH(request: Request) {
               }
             }
             
-            // Create phone mapping for next driver
+            // Create database mapping for next driver
             const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-            riderDeliveryMapping.set(nextDriver.phone, { deliveryId, expiresAt });
+            const normalizedNextPhone = nextDriver.phone.startsWith('+') ? nextDriver.phone : `+${nextDriver.phone}`;
+            
+            await prisma.riderDeliveryMapping.upsert({
+              where: { phone: normalizedNextPhone },
+              update: { 
+                deliveryId, 
+                expiresAt 
+              },
+              create: {
+                phone: normalizedNextPhone,
+                deliveryId,
+                expiresAt
+              }
+            });
+            
+            console.log(`Created database mapping for next driver: ${normalizedNextPhone} -> delivery: ${deliveryId}`);
             
             // Set new timeout for the next driver
             const timeoutId = setTimeout(() => {
-              console.log(`No response from driver ${nextDriver.id} in 30 seconds, moving to next driver`);
+              console.log(`No response from driver ${nextDriver.id} in 60 seconds, moving to next driver`);
               // This will be handled by the timeout logic in the main notification loop
-            }, 30000);
+            }, 60000); // 60 seconds timeout (1 minute)
             
             // Update notification tracking
             activeNotifications.set(deliveryId, {

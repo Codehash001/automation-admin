@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import { activeNotifications, riderDeliveryMapping } from './utils';
+import { activeNotifications } from './utils';
 
 const prisma = new PrismaClient();
 
@@ -11,18 +11,14 @@ const prisma = new PrismaClient();
 //   drivers: Array<{ id: number; phone: string; name: string }>
 // }>();
 
-// Store temporary mapping of rider phone to delivery ID (expires after 5 minutes)
-// const riderDeliveryMapping = new Map<string, {
-//   deliveryId: number,
-//   expiresAt: Date
-// }>();
-
 // Clean up expired mappings every minute
 // setInterval(() => {
 //   const now = new Date();
-//   Array.from(riderDeliveryMapping.entries()).forEach(([phone, data]) => {
-//     if (data.expiresAt < now) {
-//       riderDeliveryMapping.delete(phone);
+//   prisma.riderDeliveryMapping.deleteMany({
+//     where: {
+//       expiresAt: {
+//         lt: now
+//       }
 //     }
 //   });
 // }, 60000);
@@ -99,15 +95,15 @@ export async function POST(request: Request) {
     }));
 
     // 5. Start notifying riders one by one with timeout
-    // startRiderNotificationLoop(
-    //   delivery.id, 
-    //   driversData, 
-    //   order.id,
-    //   order.customer.whatsappNumber,
-    //   order.outlet.whatsappNo,
-    //   order.deliveryLocation,
-    //   order.deliveryAddress
-    // );
+    startRiderNotificationLoop(
+      delivery.id, 
+      driversData, 
+      order.id,
+      order.customer.whatsappNumber,
+      order.outlet.whatsappNo,
+      order.deliveryLocation,
+      order.deliveryAddress
+    );
 
     return NextResponse.json({
       success: true,
@@ -209,17 +205,37 @@ function startRiderNotificationLoop(
       } else {
         console.log(`Notification sent to driver ${driver.id} (${driver.phone})`);
         
-        // Create phone-to-delivery mapping (expires in 5 minutes)
+        // Create phone-to-delivery mapping in database (expires in 5 minutes)
+        // Normalize phone format to match lookup format
+        const normalizedPhone = driver.phone.startsWith('+') ? driver.phone : `+${driver.phone}`;
         const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-        riderDeliveryMapping.set(driver.phone, { deliveryId, expiresAt });
+        
+        try {
+          await prisma.riderDeliveryMapping.upsert({
+            where: { phone: normalizedPhone },
+            update: { 
+              deliveryId, 
+              expiresAt 
+            },
+            create: {
+              phone: normalizedPhone,
+              deliveryId,
+              expiresAt
+            }
+          });
+          
+          console.log(`Created database mapping for phone: ${normalizedPhone} -> delivery: ${deliveryId}`);
+        } catch (dbError) {
+          console.error('Error creating database mapping:', dbError);
+        }
       }
 
-      // Set timeout for 30 seconds before moving to next driver
+      // Set timeout for 1 minute before moving to next driver
       const timeoutId = setTimeout(() => {
-        console.log(`No response from driver ${driver.id} in 30 seconds, moving to next driver`);
+        console.log(`No response from driver ${driver.id} in 60 seconds, moving to next driver`);
         currentIndex++;
         notifyNextDriver();
-      }, 30000); // 30 seconds timeout
+      }, 60000); // 60 seconds timeout (1 minute)
 
       // Update active notification tracking
       activeNotifications.set(deliveryId, {

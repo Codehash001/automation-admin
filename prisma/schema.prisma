@@ -159,8 +159,18 @@ model Delivery {
   driver    Driver?  @relation(fields: [driverId], references: [id])
   driverId  Int?     // Optional driver reference
   status    String   @default("PENDING") // Delivery status: PENDING, IN_TRANSIT, DELIVERED
+  riderMappings RiderDeliveryMapping[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model RiderDeliveryMapping {
+  id         Int      @id @default(autoincrement())
+  phone      String   @unique @default("")
+  deliveryId Int      @default(0)
+  delivery   Delivery @relation(fields: [deliveryId], references: [id])
+  expiresAt  DateTime @default(now())
+  createdAt  DateTime @default(now())
 }
 
 model Rating {
