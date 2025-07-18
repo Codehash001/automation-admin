@@ -32,7 +32,7 @@ export async function middleware(request: NextRequest) {
       console.log('🔍 Middleware: Verifying token via API...');
       
       // Call the verification API endpoint
-      const verifyResponse = await fetch(new URL('/api/auth/verify', request.url), {
+      const verifyResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -80,7 +80,7 @@ export async function middleware(request: NextRequest) {
 
     try {
       // Call the verification API endpoint
-      const verifyResponse = await fetch(new URL('/api/auth/verify', request.url), {
+      const verifyResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
