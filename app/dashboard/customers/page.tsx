@@ -81,7 +81,7 @@ export default function CustomersPage() {
 
   // Filter customers based on search term
   const filteredCustomers = customers.filter(
-    (customer) =>
+    (customer: any) =>
       customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.whatsappNumber.includes(searchTerm)
   );

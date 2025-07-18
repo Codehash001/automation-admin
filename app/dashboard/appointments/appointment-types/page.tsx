@@ -186,7 +186,7 @@ export default function AppointmentTypesPage() {
   }, []);
 
   // Filter appointment types based on search term
-  const filteredTypes = appointmentTypes.filter(type =>
+  const filteredTypes = appointmentTypes.filter((type: any) =>
     type.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (type.description && type.description.toLowerCase().includes(searchTerm.toLowerCase()))
   );
@@ -252,7 +252,7 @@ export default function AppointmentTypesPage() {
                 <Users className="h-8 w-8 text-purple-600 mr-3" />
                 <div>
                   <p className="text-2xl font-bold">
-                    {appointmentTypes.filter(type => (type._count?.places || 0) > 0).length}
+                    {appointmentTypes.filter((type: any) => (type._count?.places || 0) > 0).length}
                   </p>
                   <p className="text-sm text-gray-600">Active Types</p>
                 </div>

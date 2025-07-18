@@ -144,7 +144,7 @@ export default function MenuItemsPage() {
     if (!menuSearchTerm) return menus;
     
     const searchLower = menuSearchTerm.toLowerCase();
-    return menus.filter(menu => 
+    return menus.filter((menu: any) => 
       menu.name.toLowerCase().includes(searchLower) ||
       menu.outlet?.name.toLowerCase().includes(searchLower) ||
       menu.cuisine?.name?.toLowerCase().includes(searchLower)
@@ -208,7 +208,7 @@ export default function MenuItemsPage() {
     }
   }, [menuItems]);
 
-  const filteredItems = menuItems.filter(item => 
+  const filteredItems = menuItems.filter((item: any) => 
     item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.menu.name.toLowerCase().includes(searchTerm.toLowerCase())

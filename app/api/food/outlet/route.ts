@@ -181,7 +181,7 @@ export async function GET(request: Request) {
       console.log('Current time in Dubai:', currentTime);
 
       // Filter outlets within 5km radius and check operating hours
-      const availableOutlets = allOutlets.filter(outlet => {
+      const availableOutlets = allOutlets.filter((outlet: any) => {
         // Cast JSON fields to proper types
         const location = outlet.exactLocation as LocationData;
         const hours = outlet.operatingHours as OperatingHours;

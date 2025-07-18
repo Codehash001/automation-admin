@@ -174,7 +174,7 @@ function DashboardContent({
   ];
 
   // Filter menu items based on user permissions
-  const menuItems = allMenuItems.filter(item => {
+  const menuItems = allMenuItems.filter((item: any) => {
     if (!item.resource) return true; // Show items without resource requirements
     return canAccessResource(item.resource);
   });

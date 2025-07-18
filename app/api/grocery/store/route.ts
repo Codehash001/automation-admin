@@ -155,7 +155,7 @@ export async function GET(request: Request) {
 
       // Filter stores by distance and operating hours
       const filteredStores = allStores
-        .filter(store => {
+        .filter((store: any) => {
           // Parse location
           const storeLocation = store.exactLocation as any;
           if (!storeLocation || !storeLocation.lat || !storeLocation.lng) {

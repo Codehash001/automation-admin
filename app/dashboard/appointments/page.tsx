@@ -173,7 +173,7 @@ export default function AppointmentsPage() {
   // Filter appointment places based on selected type
   useEffect(() => {
     if (selectedAppointmentType) {
-      const filtered = appointmentPlaces.filter(place => 
+      const filtered = appointmentPlaces.filter((place: any) => 
         place.appointmentType.id.toString() === selectedAppointmentType
       );
       setFilteredAppointmentPlaces(filtered);
@@ -182,7 +182,7 @@ export default function AppointmentsPage() {
     }
   }, [selectedAppointmentType, appointmentPlaces]);
 
-  const filteredAppointments = appointments.filter(appointment => 
+  const filteredAppointments = appointments.filter((appointment: any) => 
     appointment.customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     appointment.appointmentPlace.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     appointment.appointmentPlace.appointmentType.name.toLowerCase().includes(searchTerm.toLowerCase())

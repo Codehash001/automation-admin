@@ -388,7 +388,7 @@ export default function RestaurantsPage() {
   }, [statusFilter]);
 
   // Filter places based on search term
-  const filteredPlaces = places.filter(place =>
+  const filteredPlaces = places.filter((place: any) =>
     place.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (place.specialistName && place.specialistName.toLowerCase().includes(searchTerm.toLowerCase())) ||
     place.address.toLowerCase().includes(searchTerm.toLowerCase())

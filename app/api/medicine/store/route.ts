@@ -155,7 +155,7 @@ export async function GET(request: Request) {
       console.log(`Current time in minutes: ${currentTimeInMinutes}`);
 
       // Filter stores by distance (within 5km) and operating hours
-      const nearbyStores = allStores.filter(store => {
+      const nearbyStores = allStores.filter((store: any) => {
         const storeLocation = store.exactLocation as any;
         const storeLat = parseFloat(storeLocation.lat);
         const storeLng = parseFloat(storeLocation.lng);

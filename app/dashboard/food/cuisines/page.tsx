@@ -62,7 +62,7 @@ export default function CuisinesPage() {
   }, []);
 
   // Filter cuisines based on search term
-  const filteredCuisines = cuisines.filter((cuisine) =>
+  const filteredCuisines = cuisines.filter((cuisine: any) =>
     cuisine.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 

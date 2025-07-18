@@ -187,8 +187,8 @@ export async function POST(request: Request) {
 
     const totalFees = Number(
       fees
-        .filter(fee => fee.applicable)
-        .reduce((sum, fee) => sum + fee.amount, 0)
+        .filter((fee: any) => fee.applicable)
+        .reduce((sum: number, fee: any) => sum + fee.amount, 0)
         .toFixed(2)
     );
     

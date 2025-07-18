@@ -54,8 +54,8 @@ export function DataTableFacetedFilter<TData, TValue>({
                 {selectedValues.size > 2
                   ? `${selectedValues.size} selected`
                   : options
-                      .filter((option) => selectedValues.has(option.value))
-                      .map((option) => option.label)
+                      .filter((option: any) => selectedValues.has(option.value))
+                      .map((option: any) => option.label)
                       .join(', ')}
               </div>
             </>
