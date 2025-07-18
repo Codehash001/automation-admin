@@ -205,7 +205,7 @@ export async function POST(request: Request) {
 
     console.log('[ManyChats] Starting database transaction');
     // Create the order in a transaction
-    const order = await prisma.$transaction(async (prisma) => {
+    const order = await prisma.$transaction(async (prisma: any) => {
       console.log('[ManyChats] Creating order record');
       
       // First create the order

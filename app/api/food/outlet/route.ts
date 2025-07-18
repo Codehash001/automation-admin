@@ -392,7 +392,7 @@ export async function POST(request: Request) {
     }
 
     // Create the outlet with its relationships
-    const outlet = await prisma.$transaction(async (prisma) => {
+    const outlet = await prisma.$transaction(async (prisma: any) => {
       const newOutlet = await prisma.outlet.create({
         data: {
           name: data.name.trim(),
@@ -522,7 +522,7 @@ export async function PUT(request: Request) {
     }
 
     // Update the outlet with its relationships
-    const updatedOutlet = await prisma.$transaction(async (prisma) => {
+    const updatedOutlet = await prisma.$transaction(async (prisma: any) => {
       // Update the outlet
       await prisma.outlet.update({
         where: { id: parseInt(id) },
