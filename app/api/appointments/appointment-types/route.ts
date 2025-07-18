@@ -240,7 +240,7 @@ export async function DELETE(request: NextRequest) {
     // Check if there are associated places
     if (existingType.places.length > 0) {
       const totalAppointments = existingType.places.reduce(
-        (sum, place) => sum + place._count.appointments,
+        (sum: number, place: { _count: { appointments: number } }) => sum + place._count.appointments,
         0
       );
 
