@@ -156,7 +156,7 @@ export default function MenuItemsPage() {
     const menusToGroup = menuSearchTerm ? filteredMenus : menus;
     const grouped: Record<string, Menu[]> = {};
     
-    menusToGroup.forEach(menu => {
+    menusToGroup.forEach((menu: any) => {
       const outletName = menu.outlet?.name || 'Other';
       if (!grouped[outletName]) {
         grouped[outletName] = [];

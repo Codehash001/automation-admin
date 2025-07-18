@@ -309,7 +309,7 @@ export async function GET(request: Request) {
     if (responseType === 'objectArray') {
       // Format as object array
       const outletsObject: { [key: string]: any } = {};
-      outlets.forEach((outlet, index) => {
+      outlets.forEach((outlet: any, index: number) => {
         outletsObject[`outlet${index + 1}`] = {
           ...outlet,
           cuisines: outlet.cuisines.map((oc: any) => ({

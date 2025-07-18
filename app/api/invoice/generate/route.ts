@@ -75,7 +75,7 @@ function parseItemsString(itemsString: string): ProcessedItem[] {
 function combineDuplicateItems(items: ProcessedItem[]): ProcessedItem[] {
   const itemMap = new Map<string, ProcessedItem>();
   
-  items.forEach(item => {
+  items.forEach((item: any) => {
     const existingItem = itemMap.get(item.name);
     if (existingItem) {
       existingItem.quantity += item.quantity;
