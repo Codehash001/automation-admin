@@ -81,6 +81,7 @@ export async function POST(request: Request) {
     const averageRating = outletRatings.reduce((sum: any, r: { rating: any; }) => sum + r.rating, 0) / outletRatings.length;
 
     // Update outlet with new average rating (you might want to add an averageRating field to the Outlet model)
+    if (newRating.order.outletId) {
     await prisma.outlet.update({
       where: { id: newRating.order.outletId },
       data: {
@@ -88,6 +89,7 @@ export async function POST(request: Request) {
         // averageRating: parseFloat(averageRating.toFixed(1))
       }
     });
+    }
 
     return NextResponse.json(newRating, { status: 201 });
   } catch (error) {
@@ -138,7 +140,7 @@ export async function PUT(request: Request) {
     });
 
     // Recalculate average rating for the outlet if rating was updated
-    if (rating) {
+    if (rating && updatedRating.order.outletId) {
       const outletRatings = await prisma.rating.findMany({
         where: {
           order: {
@@ -219,12 +221,14 @@ export async function DELETE(request: Request) {
       : 0;
 
     // Update outlet with new average rating
+    if (rating.order.outletId) {
     await prisma.outlet.update({
       where: { id: rating.order.outletId },
       data: {
         // averageRating: parseFloat(averageRating.toFixed(1))
       }
     });
+    }
     
     return NextResponse.json({ message: 'Rating deleted successfully' });
   } catch (error) {
