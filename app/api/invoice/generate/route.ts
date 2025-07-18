@@ -156,7 +156,7 @@ export async function POST(request: Request) {
 
     const subtotal = Number(
       processedItems
-        .reduce((sum, item) => sum + (item.total || 0), 0)
+        .reduce((sum: number, item: any) => sum + (item.total || 0), 0)
         .toFixed(2)
     );
 

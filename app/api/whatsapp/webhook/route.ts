@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     
     // Convert FormData to a plain object
-    const body = Array.from(formData.entries()).reduce((acc, [key, value]) => {
+    const body = Array.from(formData.entries()).reduce((acc: any, [key, value]: any) => {
       acc[key] = value.toString();
       return acc;
     }, {} as Record<string, string>);

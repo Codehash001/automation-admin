@@ -102,7 +102,7 @@ export async function sendOrderNotificationToOutlet(orderId: number): Promise<bo
       .join('\n');
 
     // Calculate subtotal
-    const subtotal = order.items.reduce((sum, item) => 
+    const subtotal = order.items.reduce((sum: number, item: any) => 
       sum + (Number(item.price) * item.quantity), 0);
 
     // Format the main order message

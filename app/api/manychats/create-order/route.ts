@@ -58,7 +58,7 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
   const deliveryFee = additionalPrices.find((p: { name: string; }) => p.name === 'DELIVERY_FEE')?.value.toNumber() || 10;
   const vatRate = additionalPrices.find((p: { name: string; }) => p.name === 'VAT')?.value.toNumber() || 0.05;
 
-  const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const subtotal = items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
   const serviceFee = subtotal * serviceFeeRate;
   const vat = (subtotal + serviceFee + deliveryFee) * vatRate;
   const total = subtotal + serviceFee + deliveryFee + vat;
@@ -193,7 +193,7 @@ export async function POST(request: Request) {
     console.log('[ManyChats] Mapped order items:', JSON.stringify(orderItems, null, 2));
 
     // Calculate totals
-    const subtotal = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const subtotal = orderItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
     console.log('[ManyChats] Calculating order totals');
     const { serviceFee, deliveryFee, vat, total } = await calculateTotals(
       orderItems.map((item: any) => ({
@@ -290,7 +290,7 @@ export async function POST(request: Request) {
     }));
 
     // Calculate item quantities for grouped items
-    const groupedItems = orderItemsResponse.reduce((acc: any, item, index) => {
+    const groupedItems = orderItemsResponse.reduce((acc: any, item: any, index: number) => {
       // Since we're already grouping in the parseItems function, we can just use the items as is
       acc.push(item);
       return acc;
