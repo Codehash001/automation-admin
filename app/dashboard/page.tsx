@@ -113,7 +113,7 @@ export default function DashboardPage() {
           <Skeleton className="h-5 w-96" />
         </div>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
+          {[1, 2, 3, 4].map((i: any) => (
             <Skeleton key={i} className="h-36 rounded-xl" />
           ))}
         </div>
@@ -130,7 +130,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {/* Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {statsCards.map((stat, index) => (
+        {statsCards.map((stat: any, index: number) => (
           <Card key={index} className="border-0 shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-gray-500">
@@ -173,7 +173,7 @@ export default function DashboardPage() {
           <CardContent className="p-0">
             <div className="divide-y divide-gray-100">
               {stats?.recentOrders?.length ? (
-                stats.recentOrders.map((order) => (
+                stats.recentOrders.map((order: any) => (
                   <div key={order.id} className="p-4 hover:bg-gray-50 transition-colors">
                     <div className="flex items-start justify-between">
                       <div>
@@ -239,7 +239,7 @@ export default function DashboardPage() {
                           `${(percent * 100).toFixed(0)}%`
                         }
                       >
-                        {stats.orderByStatus.map((entry, index) => (
+                        {stats.orderByStatus.map((entry: any, index: number) => (
                           <Cell 
                             key={`cell-${index}`} 
                             fill={COLORS[index % COLORS.length]} 
@@ -261,7 +261,7 @@ export default function DashboardPage() {
                   </ResponsiveContainer>
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-2">
-                  {stats.orderByStatus.map((status, index) => (
+                  {stats.orderByStatus.map((status: any, index: number) => (
                     <div key={status.status} className="flex items-center">
                       <div 
                         className="w-3 h-3 rounded-full mr-2" 
@@ -341,7 +341,7 @@ export default function DashboardPage() {
                   name="Orders" 
                   radius={[4, 4, 0, 0]}
                 >
-                  {stats.orderStats.map((entry, index) => (
+                  {stats.orderStats.map((entry: any, index: number) => (
                     <Cell 
                       key={`cell-${index}`} 
                       fill={

@@ -113,7 +113,7 @@ export async function GET(request: Request) {
       // Format the response
       const formattedOutlet = {
         ...outlet,
-        cuisines: outlet.cuisines.map(oc => ({
+        cuisines: outlet.cuisines.map((oc: any) => ({
           cuisine: oc.cuisine
         }))
       };
@@ -243,7 +243,7 @@ export async function GET(request: Request) {
 
       // Sort by distance (closest first) and add distance info
       const sortedOutlets = availableOutlets
-        .map(outlet => {
+        .map((outlet: any) => {
           const location = outlet.exactLocation as LocationData;
           const outletLat = typeof location.lat === 'string' ? parseFloat(location.lat) : location.lat;
           const outletLng = typeof location.lng === 'string' ? parseFloat(location.lng) : location.lng;
@@ -266,7 +266,7 @@ export async function GET(request: Request) {
         sortedOutlets.forEach((outlet, index) => {
           outletsObject[`outlet${index + 1}`] = {
             ...outlet,
-            cuisines: outlet.cuisines.map(oc => ({
+            cuisines: outlet.cuisines.map((oc: any) => ({
               cuisine: oc.cuisine
             }))
           };
@@ -275,9 +275,9 @@ export async function GET(request: Request) {
       }
 
       // Default response format (array)
-      const formattedOutlets = sortedOutlets.map(outlet => ({
+      const formattedOutlets = sortedOutlets.map((outlet: any) => ({
         ...outlet,
-        cuisines: outlet.cuisines.map(oc => ({
+        cuisines: outlet.cuisines.map((oc: any) => ({
           cuisine: oc.cuisine
         }))
       }));
@@ -312,7 +312,7 @@ export async function GET(request: Request) {
       outlets.forEach((outlet, index) => {
         outletsObject[`outlet${index + 1}`] = {
           ...outlet,
-          cuisines: outlet.cuisines.map(oc => ({
+          cuisines: outlet.cuisines.map((oc: any) => ({
             cuisine: oc.cuisine
           }))
         };
@@ -321,9 +321,9 @@ export async function GET(request: Request) {
     }
 
     // Default response format (array)
-    const formattedOutlets = outlets.map(outlet => ({
+    const formattedOutlets = outlets.map((outlet: any) => ({
       ...outlet,
-      cuisines: outlet.cuisines.map(oc => ({
+      cuisines: outlet.cuisines.map((oc: any) => ({
         cuisine: oc.cuisine
       }))
     }));
@@ -408,7 +408,7 @@ export async function POST(request: Request) {
             close: data.operatingHours.close,
           },
           cuisines: {
-            create: data.cuisineIds.map(cuisineId => ({
+            create: data.cuisineIds.map((cuisineId: number) => ({
               cuisine: { connect: { id: cuisineId } }
             }))
           }
@@ -429,7 +429,7 @@ export async function POST(request: Request) {
     // Format the response
     const formattedOutlet = {
       ...outlet,
-      cuisines: outlet.cuisines.map(oc => ({
+      cuisines: outlet.cuisines.map((oc: any) => ({
         cuisine: oc.cuisine
       }))
     };
@@ -551,7 +551,7 @@ export async function PUT(request: Request) {
 
         // Create new connections
         await prisma.outletCuisine.createMany({
-          data: data.cuisineIds.map(cuisineId => ({
+          data: data.cuisineIds.map((cuisineId: number) => ({
             outletId: parseInt(id),
             cuisineId: cuisineId,
             assignedAt: new Date()
@@ -583,7 +583,7 @@ export async function PUT(request: Request) {
     // Format the response
     const formattedOutlet = {
       ...updatedOutlet,
-      cuisines: updatedOutlet?.cuisines.map(oc => ({
+      cuisines: updatedOutlet?.cuisines.map((oc: any) => ({
         cuisine: oc.cuisine
       })) || []
     };

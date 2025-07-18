@@ -227,7 +227,7 @@ export async function GET(request: Request) {
 
       // Format the response based on responseType
       if (responseType === 'objectArray') {
-        const formattedStores = filteredStores.map(store => ({
+        const formattedStores = filteredStores.map((store: any) => ({
           id: store.id,
           name: store.name,
           emirate: store.emirates.name,
@@ -240,7 +240,7 @@ export async function GET(request: Request) {
       }
 
       // Default response with full store data
-      return NextResponse.json(filteredStores.map(store => ({
+      return NextResponse.json(filteredStores.map((store: any) => ({
         ...store,
         distance: parseFloat((store as any).distance.toFixed(2))
       })));

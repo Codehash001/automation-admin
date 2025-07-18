@@ -78,13 +78,13 @@ export async function GET() {
       };
     });
 
-    const formattedOrderStats = (last7DaysStats as any[]).map(stat => ({
+    const formattedOrderStats = (last7DaysStats as any[]).map((stat: any) => ({
       date: new Date(stat.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       orders: Number(stat.orders),
       revenue: parseFloat(stat.revenue)
     }));
 
-    const formattedOrdersByStatus = (ordersByStatus as any[]).map(stat => ({
+    const formattedOrdersByStatus = (ordersByStatus as any[]).map((stat: any) => ({
       status: stat.status,
       count: Number(stat.count)
     }));

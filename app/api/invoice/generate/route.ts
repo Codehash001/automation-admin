@@ -50,8 +50,8 @@ function parseItemsString(itemsString: string): ProcessedItem[] {
   // Split by newlines or commas, then filter out empty strings and null items
   const itemStrings = itemsString
     .split(/[\n,]+/)
-    .map(s => s.trim())
-    .filter(s => {
+    .map((s: string) => s.trim())
+    .filter((s: string) => {
       // Remove empty strings and items that are just "null"
       return Boolean(s) && s.toLowerCase() !== 'null';
     });
@@ -161,7 +161,7 @@ export async function POST(request: Request) {
     );
 
     // Calculate additional fees
-    const fees = additionalPrices.map(price => {
+    const fees = additionalPrices.map((price: any) => {
       let amount = 0;
       
       switch(price.name.toLowerCase()) {
@@ -234,14 +234,14 @@ export async function POST(request: Request) {
       success: true,
       message,
       invoice: {
-        items: processedItems.map(item => ({
+        items: processedItems.map((item: any) => ({
           name: item.name,
           quantity: item.quantity,
           unitPrice: item.price,
           total: item.total
         })),
         subtotal,
-        fees: applicableFees.map(fee => ({
+        fees: applicableFees.map((fee: any) => ({
           name: fee.name,
           amount: fee.amount
         })),

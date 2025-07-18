@@ -113,11 +113,11 @@ export async function GET(request: Request) {
 
     // Convert to a map for easier lookup
     const countsMap = new Map(
-      counts.map(item => [item.cuisineId, Number(item.count)])
+      counts.map((item: any) => [item.cuisineId, Number(item.count)])
     );
 
     // Merge counts with cuisines and ensure dates are serialized
-    const cuisinesWithCounts = cuisines.map(cuisine => ({
+    const cuisinesWithCounts = cuisines.map((cuisine: any) => ({
       ...cuisine,
       _count: {
         outlets: countsMap.get(cuisine.id) || 0

@@ -206,7 +206,7 @@ export async function GET(request: Request) {
       console.log(`Found ${nearbyStores.length} stores within 5km and open now`);
 
       // Add distance to each store and sort by distance
-      const storesWithDistance = nearbyStores.map(store => {
+      const storesWithDistance = nearbyStores.map((store: any) => {
         const storeLocation = store.exactLocation as any;
         const storeLat = parseFloat(storeLocation.lat);
         const storeLng = parseFloat(storeLocation.lng);
@@ -229,7 +229,7 @@ export async function GET(request: Request) {
       }
 
       // Return array format (for backward compatibility)
-      const storeArray = storesWithDistance.map(store => [
+      const storeArray = storesWithDistance.map((store: any) => [
         store.id,
         store.name,
         store.whatsappNo,

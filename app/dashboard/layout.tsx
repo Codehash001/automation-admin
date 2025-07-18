@@ -198,7 +198,7 @@ function DashboardContent({
 
         <nav className="flex-1 overflow-y-auto">
           <ul className="p-4 space-y-2">
-            {menuItems.map((item) => (
+            {menuItems.map((item: any) => (
               <li key={item.name}>
                 {item.children ? (
                   <>
@@ -220,7 +220,7 @@ function DashboardContent({
                     </button>
                     {expandedMenus[item.name.toLowerCase().replace(' ', '')] && (
                       <ul className="ml-6 mt-1 space-y-1">
-                        {item.children.map((child) => (
+                        {item.children.map((child: any) => (
                           <li key={child.name}>
                             <Link
                               href={child.href}

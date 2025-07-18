@@ -88,9 +88,9 @@ export async function GET(request: Request) {
       });
 
       // Format the response
-      const responseData = riders.map(rider => ({
+      const responseData = riders.map((rider: any) => ({
         ...rider,
-        emirates: rider.emirates.map(e => ({
+        emirates: rider.emirates.map((e: any) => ({
           emirate: e.emirate
         }))
       }));

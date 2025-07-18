@@ -12,7 +12,7 @@ function parseItems(textItems: string | string[]) {
     if (!itemStr || typeof itemStr !== 'string') continue;
     
     // Split by comma to get individual items
-    const items = itemStr.split(',').map(i => i.trim()).filter(Boolean);
+    const items = itemStr.split(',').map((i: string) => i.trim()).filter(Boolean);
     
     for (let item of items) {
       // Handle the format: "Appam - 2" or "null, Appam - 2"
@@ -150,7 +150,7 @@ export async function POST(request: Request) {
     });
     
     console.log(`[ManyChats] Found ${menuItems.length} menu items in outlet ${outletId}`);
-    console.log('[ManyChats] Available menu items:', menuItems.map(mi => ({
+    console.log('[ManyChats] Available menu items:', menuItems.map((mi: any) => ({
       id: mi.id,
       name: mi.name,
       price: mi.price,
@@ -167,11 +167,11 @@ export async function POST(request: Request) {
       
       if (!menuItem) {
         console.error(`[ManyChats] Menu item not found: "${parsedItem.name}"`);
-        console.error(`[ManyChats] Available items: ${menuItems.map(mi => `"${mi.name}"`).join(', ')}`);
+        console.error(`[ManyChats] Available items: ${menuItems.map((mi: any) => `"${mi.name}"`).join(', ')}`);
         return NextResponse.json(
           { 
             error: `Menu item not found: "${parsedItem.name}"`,
-            availableItems: menuItems.map(mi => ({
+            availableItems: menuItems.map((mi: any) => ({
               id: mi.id,
               name: mi.name,
               price: mi.price
@@ -196,7 +196,7 @@ export async function POST(request: Request) {
     const subtotal = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     console.log('[ManyChats] Calculating order totals');
     const { serviceFee, deliveryFee, vat, total } = await calculateTotals(
-      orderItems.map(item => ({
+      orderItems.map((item: any) => ({
         price: item.price,
         quantity: item.quantity
       })),
@@ -240,7 +240,7 @@ export async function POST(request: Request) {
 
       // Create order items
       const createdItems = await Promise.all(
-        orderItems.map(item => 
+        orderItems.map((item: any) => 
           prisma.orderItem.create({
             data: {
               orderId: newOrder.id,
@@ -285,7 +285,7 @@ export async function POST(request: Request) {
     }
 
     // Format the order items
-    const orderItemsResponse = fullOrder.items.map(item => ({
+    const orderItemsResponse = fullOrder.items.map((item: any) => ({
       detail: `${item.menuItem.name} × ${item.quantity} - ${(Number(item.price) * Number(item.quantity)).toFixed(2)} AED`
     }));
 
