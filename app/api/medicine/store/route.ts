@@ -222,7 +222,7 @@ export async function GET(request: Request) {
           ...store,
           distance: Math.round(distance * 100) / 100 // Round to 2 decimal places
         };
-      }).sort((a, b) => a.distance - b.distance);
+      }).sort((a: any, b: any) => a.distance - b.distance);
 
       if (responseType === 'objectArray') {
         return NextResponse.json(storesWithDistance);

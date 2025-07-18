@@ -221,7 +221,7 @@ export async function GET(request: Request) {
             return false;
           }
         })
-        .sort((a, b) => (a as any).distance - (b as any).distance);
+        .sort((a: any, b: any) => (a as any).distance - (b as any).distance);
 
       console.log(`Returning ${filteredStores.length} stores after filtering`);
 

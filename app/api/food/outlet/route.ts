@@ -258,12 +258,12 @@ export async function GET(request: Request) {
             ).toFixed(2))
           };
         })
-        .sort((a, b) => a.distance - b.distance);
+        .sort((a: any, b: any) => a.distance - b.distance);
 
       // Check if responseType is objectArray
       if (responseType === 'objectArray') {
         const outletsObject: { [key: string]: any } = {};
-        sortedOutlets.forEach((outlet, index) => {
+        sortedOutlets.forEach((outlet: any, index: number) => {
           outletsObject[`outlet${index + 1}`] = {
             ...outlet,
             cuisines: outlet.cuisines.map((oc: any) => ({
