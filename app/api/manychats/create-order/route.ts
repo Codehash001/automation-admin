@@ -311,9 +311,9 @@ export async function POST(request: Request) {
           phone: fullOrder.customer.whatsappNumber
         },
         outlet: {
-          id: fullOrder.outlet.id,
-          name: fullOrder.outlet.name,
-          whatsappNo: fullOrder.outlet.whatsappNo
+          id: fullOrder.outlet?.id,
+          name: fullOrder.outlet?.name,
+          whatsappNo: fullOrder.outlet?.whatsappNo
         },
         delivery: {
           address: fullOrder.deliveryAddress,
