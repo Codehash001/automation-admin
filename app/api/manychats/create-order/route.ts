@@ -30,7 +30,7 @@ function parseItems(textItems: string | string[]) {
       const price = parseFloat(match[2]);
       
       // Check if we already have this exact item (same name and price)
-      const existingItem = result.find(i => 
+      const existingItem = result.find((i: any) => 
         i.name.toLowerCase() === name.toLowerCase() && 
         i.price === price
       );
@@ -161,7 +161,7 @@ export async function POST(request: Request) {
     const orderItems: { menuItemId: number; quantity: number; price: number; menuItemName: string; }[] = [];
     for (const parsedItem of parsedItems) {
       // Find menu item by name (case-insensitive)
-      const menuItem = menuItems.find(mi => 
+      const menuItem = menuItems.find((mi: any) => 
         mi.name.trim().toLowerCase() === parsedItem.name.trim().toLowerCase()
       );
       
