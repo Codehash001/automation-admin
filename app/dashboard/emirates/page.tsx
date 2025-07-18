@@ -34,11 +34,6 @@ export default function EmiratesPage() {
       
       const data = await response.json();
       setEmirates(data);
-      
-      toast({
-        title: 'Success',
-        description: 'Emirates loaded successfully',
-      });
     } catch (error) {
       console.error('Error fetching emirates:', error);
       toast({
@@ -171,7 +166,7 @@ export default function EmiratesPage() {
         onDelete={handleDelete}
         searchKey="name"
         searchPlaceholder="Search emirates..."
-        title="Emirates"
+        title=""
       />
 
       <FormDialog

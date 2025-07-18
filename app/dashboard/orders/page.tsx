@@ -90,16 +90,12 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="space-y-6 h-full flex flex-col">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
-      </div>
-      
+    <div className="space-y-6 h-full flex flex-col"> 
       <Card className="flex-1 flex flex-col">
         <CardHeader className="border-b">
           <CardTitle>Recent Orders</CardTitle>
         </CardHeader>
-        <CardContent className="flex-1 p-0">
+        <CardContent className="flex-1 p-2">
           <DataTable 
             columns={columns} 
             data={orders} 

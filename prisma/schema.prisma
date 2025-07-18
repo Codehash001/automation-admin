@@ -378,3 +378,33 @@ model Appointment {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 }
+
+// Authentication Models
+model User {
+  id          Int      @id @default(autoincrement())
+  email       String   @unique
+  password    String   // Hashed password
+  name        String
+  role        UserRole @default(ADMIN)
+  isActive    Boolean  @default(true)
+  lastLogin   DateTime?
+  sessions    Session[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  VIEWER
+}
