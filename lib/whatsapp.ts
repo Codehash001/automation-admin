@@ -90,9 +90,9 @@ export async function sendOrderNotificationToOutlet(orderId: number): Promise<bo
       return false;
     }
 
-    const outletNumber = order.outlet.whatsappNo;
+    const outletNumber = order.outlet?.whatsappNo;
     if (!outletNumber) {
-      console.error(`[WhatsApp] No WhatsApp number found for outlet ${order.outlet.id}`);
+      console.error(`[WhatsApp] No WhatsApp number found for outlet ${order.outlet?.id}`);
       return false;
     }
 
