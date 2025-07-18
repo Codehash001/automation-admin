@@ -221,8 +221,8 @@ export async function POST(request: Request) {
     message += `Subtotal: ${formatCurrency(subtotal)}\n`;
     
     // Add applicable fees
-    const applicableFees = fees.filter(fee => fee.applicable && fee.amount > 0);
-    applicableFees.forEach(fee => {
+    const applicableFees = fees.filter((fee: any) => fee.applicable && fee.amount > 0);
+    applicableFees.forEach((fee: any) => {
       message += `${fee.name}: ${formatCurrency(fee.amount)}\n`;
     });
     
