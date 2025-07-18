@@ -64,8 +64,8 @@ export async function GET() {
     });
 
     // Format the data
-    const formattedRecentOrders = recentOrders.map(order => {
-      const total = order.items.reduce((sum, item) => {
+    const formattedRecentOrders = recentOrders.map((order: any) => {
+      const total = order.items.reduce((sum: number, item: any) => {
         return sum + (parseFloat(item.menuItem.price.toString()) * item.quantity);
       }, 0);
 
