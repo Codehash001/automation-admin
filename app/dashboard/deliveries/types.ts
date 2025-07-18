@@ -10,6 +10,7 @@ export interface Rider {
   id: number;
   name: string;
   phone: string;
+  liveLocation?: string;
 }
 
 export interface Emirate {
@@ -38,4 +39,5 @@ export interface Delivery {
   customerName: string;
   customerPhone: string;
   emirateName: string;
+  riderLiveLocation?: string;
 }

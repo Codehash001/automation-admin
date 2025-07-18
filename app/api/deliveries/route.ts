@@ -100,7 +100,7 @@ export async function POST(request: Request) {
       driversData, 
       order.id,
       order.customer.whatsappNumber,
-      order.outlet.whatsappNo,
+      order.outlet?.whatsappNo || '',
       order.deliveryLocation,
       order.deliveryAddress
     );
@@ -289,6 +289,62 @@ export async function GET(request: Request) {
     console.error('Error fetching deliveries:', error);
     return NextResponse.json(
       { error: 'Failed to fetch deliveries' },
+      { status: 500 }
+    );
+  }
+}
+
+// Update rider's live location
+export async function PATCH(request: Request) {
+  try {
+    const { phone, liveLocation } = await request.json();
+
+    if (!phone || !liveLocation) {
+      return NextResponse.json(
+        { error: 'Phone number and live location are required' },
+        { status: 400 }
+      );
+    }
+
+    // Convert phone to standard format
+    const riderPhone = phone.startsWith('+') ? phone : `+${phone}`;
+
+    // Find the rider
+    const rider = await prisma.driver.findUnique({
+      where: { phone: riderPhone }
+    });
+
+    if (!rider) {
+      return NextResponse.json(
+        { error: 'Rider not found' },
+        { status: 404 }
+      );
+    }
+
+    // Update rider's live location
+    const updatedRider = await prisma.driver.update({
+      where: { id: rider.id },
+      data: {
+        liveLocation,
+        updatedAt: new Date()
+      }
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Live location updated successfully',
+      rider: {
+        id: updatedRider.id,
+        name: updatedRider.name,
+        phone: updatedRider.phone,
+        liveLocation: updatedRider.liveLocation
+      }
+    });
+
+  } catch (error) {
+    console.error('Error updating rider location:', error);
+    return NextResponse.json(
+      { error: 'Failed to update rider location' },
       { status: 500 }
     );
   }

@@ -14,6 +14,7 @@ model Customer {
   name           String
   whatsappNumber String    @unique
   orders         Order[]
+  appointments   Appointment[]
   createdAt      DateTime  @default(now())
 }
 
@@ -23,6 +24,8 @@ model Emirates {
   outlets     Outlet[]
   orders      Order[]
   drivers     DriverEmirate[]
+  groceryStores GroceryStore[]
+  medicalStores MedicalStore[]
 }
 
 model Cuisine {
@@ -95,8 +98,12 @@ model Order {
   emiratesId      Int
   orderType       String      // Can be 'Delivery', 'Self Pick-up', or 'Appointment'
   category        String      // Food, Medicine, Grocery, etc.
-  outlet          Outlet      @relation(fields: [outletId], references: [id])
-  outletId        Int
+  outlet          Outlet?      @relation(fields: [outletId], references: [id])
+  outletId        Int?
+  groceryStore    GroceryStore? @relation(fields: [groceryStoreId], references: [id])
+  groceryStoreId  Int?
+  medicalStore    MedicalStore? @relation(fields: [medicalStoreId], references: [id])
+  medicalStoreId  Int?
   deliveryAddress String?
   deliveryLocation String?    // Store as "lat,lng" string (e.g., "6.8221635818481,80.042129516602")
   buildingType    String?     // Apartment/Villa
@@ -112,6 +119,8 @@ model Order {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   items           OrderItem[]
+  groceryItems    GroceryOrderItem[]
+  medicineItems   MedicineOrderItem[]
   delivery        Delivery?
   rating          Rating?
 }
@@ -126,6 +135,27 @@ model OrderItem {
   price       Decimal   @db.Decimal(10, 2)
 }
 
+model GroceryOrderItem {
+  id              Int             @id @default(autoincrement())
+  order           Order           @relation(fields: [orderId], references: [id])
+  orderId         Int
+  groceryMenuItem GroceryMenuItem @relation(fields: [groceryMenuItemId], references: [id])
+  groceryMenuItemId Int
+  quantity        Int
+  price           Decimal         @db.Decimal(10, 2)
+}
+
+model MedicineOrderItem {
+  id              Int             @id @default(autoincrement())
+  order           Order           @relation(fields: [orderId], references: [id])
+  orderId         Int
+  medicineMenuItem MedicineMenuItem @relation(fields: [medicineMenuItemId], references: [id])
+  medicineMenuItemId Int
+  quantity        Int
+  price           Decimal         @db.Decimal(10, 2)
+  prescriptionUrl String?         // URL to uploaded prescription if required
+}
+
 enum DriverType {
   DELIVERY
   RIDE_SERVICE
@@ -137,6 +167,7 @@ model Driver {
   phone       String      @unique
   available   Boolean     @default(true)
   driverType  DriverType  @default(DELIVERY)
+  liveLocation String?    @default("")  // Google Maps URL for live location
   emirates    DriverEmirate[]
   deliveries  Delivery[]
   createdAt   DateTime    @default(now())
@@ -217,4 +248,133 @@ model AdditionalPrice {
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+// Grocery Store Models
+model GroceryStore {
+  id             Int              @id @default(autoincrement())
+  name           String
+  emirates       Emirates         @relation(fields: [emiratesId], references: [id])
+  emiratesId     Int
+  whatsappNo     String
+  status         OutletStatus
+  exactLocation  Json             @default("{\"lat\": 0.0, \"lng\": 0.0}")
+  operatingHours Json             @default("{\"open\": \"00:00\", \"close\": \"00:00\"}")
+  menus          GroceryMenu[]
+  orders         Order[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+}
+
+model GroceryMenu {
+  id          Int               @id @default(autoincrement())
+  name        String
+  description String?
+  store       GroceryStore      @relation(fields: [storeId], references: [id])
+  storeId     Int
+  isActive    Boolean           @default(true)
+  items       GroceryMenuItem[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([storeId, name]) // Ensure unique menu names per store
+}
+
+model GroceryMenuItem {
+  id          Int               @id @default(autoincrement())
+  name        String
+  description String?
+  price       Decimal           @db.Decimal(10, 2)
+  imageUrl    String?
+  isAvailable Boolean           @default(true)
+  menu        GroceryMenu       @relation(fields: [menuId], references: [id])
+  menuId      Int
+  orderItems  GroceryOrderItem[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+// Medical Store Models
+model MedicalStore {
+  id             Int              @id @default(autoincrement())
+  name           String
+  emirates       Emirates         @relation(fields: [emiratesId], references: [id])
+  emiratesId     Int
+  whatsappNo     String
+  status         OutletStatus
+  exactLocation  Json             @default("{\"lat\": 0.0, \"lng\": 0.0}")
+  operatingHours Json             @default("{\"open\": \"00:00\", \"close\": \"00:00\"}")
+  menus          MedicineMenu[]
+  orders         Order[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+}
+
+model MedicineMenu {
+  id          Int               @id @default(autoincrement())
+  name        String
+  description String?
+  store       MedicalStore      @relation(fields: [storeId], references: [id])
+  storeId     Int
+  isActive    Boolean           @default(true)
+  items       MedicineMenuItem[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([storeId, name]) // Ensure unique menu names per store
+}
+
+model MedicineMenuItem {
+  id          Int               @id @default(autoincrement())
+  name        String
+  description String?
+  price       Decimal           @db.Decimal(10, 2)
+  imageUrl    String?
+  isAvailable Boolean           @default(true)
+  requiresPrescription Boolean  @default(false)
+  menu        MedicineMenu      @relation(fields: [menuId], references: [id])
+  menuId      Int
+  orderItems  MedicineOrderItem[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+// Appointment Models
+model AppointmentType {
+  id              Int               @id @default(autoincrement())
+  name            String            @unique // Salon, Medical Centre, Legal Advisor, Restaurant
+  description     String?           // Optional description of the appointment type
+  places          AppointmentPlace[] // Relation to appointment places
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+}
+
+model AppointmentPlace {
+  id                    Int             @id @default(autoincrement())
+  name                  String          // Name of the specific place/provider
+  appointmentType       AppointmentType @relation(fields: [appointmentTypeId], references: [id])
+  appointmentTypeId     Int
+  specialistName        String?         // Optional specialist name
+  whatsappNo            String          // WhatsApp number for the service provider
+  status                String          @default("ACTIVE") // ACTIVE, INACTIVE
+  exactLocation         Json            @default("{\"lat\": 0.0, \"lng\": 0.0}")
+  address               String
+  numberOfAppointedPeople Int           @default(1) // Default to 1, only change for restaurant appointments
+  appointments          Appointment[]
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  @@unique([appointmentTypeId, name]) // Ensure unique place names per appointment type
+}
+
+model Appointment {
+  id                Int             @id @default(autoincrement())
+  customer          Customer        @relation(fields: [customerId], references: [id])
+  customerId        Int
+  appointmentPlace  AppointmentPlace @relation(fields: [appointmentPlaceId], references: [id])
+  appointmentPlaceId Int
+  appointmentDate   DateTime
+  status            String          @default("SCHEDULED") // SCHEDULED, COMPLETED, CANCELLED
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 }

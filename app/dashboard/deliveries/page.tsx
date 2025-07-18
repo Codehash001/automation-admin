@@ -31,6 +31,7 @@ export default function DeliveriesPage() {
             customerPhone: delivery.order?.customer?.whatsappNumber || 'N/A',
             riderName: delivery.driver?.name || 'N/A',
             riderPhone: delivery.driver?.phone || 'N/A',
+            riderLiveLocation: delivery.driver?.liveLocation || '',
             emirateName: delivery.order?.emirates?.name || 'N/A',
             createdAt: delivery.createdAt ? new Date(delivery.createdAt).toLocaleString() : 'N/A',
             updatedAt: delivery.updatedAt ? new Date(delivery.updatedAt).toLocaleString() : 'N/A',

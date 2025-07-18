@@ -2,7 +2,7 @@ import { ColumnDef } from '@tanstack/react-table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
-import { MoreHorizontal, ArrowUpDown } from 'lucide-react';
+import { MoreHorizontal, ArrowUpDown, MapPin } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,6 +48,26 @@ export const columns: ColumnDef<Delivery>[] = [
         <div className="text-sm text-gray-500">{row.original.riderPhone}</div>
       </div>
     ),
+  },
+  {
+    accessorKey: 'riderLiveLocation',
+    header: 'Live Location',
+    cell: ({ row }) => {
+      if (!row.original.riderLiveLocation) {
+        return <span className="text-gray-400">No location</span>;
+      }
+      return (
+        <a 
+          href={row.original.riderLiveLocation} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="flex items-center text-blue-600 hover:text-blue-800"
+        >
+          <MapPin className="h-4 w-4 mr-1" />
+          View Location
+        </a>
+      );
+    },
   },
   {
     accessorKey: 'emirate',

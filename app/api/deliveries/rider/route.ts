@@ -147,10 +147,10 @@ export async function PATCH(request: Request) {
             buildingType: delivery.order.buildingType
           },
           outletLocation: {
-            name: delivery.order.outlet.name,
-            phone: delivery.order.outlet.whatsappNo,
-            emirate: delivery.order.outlet.emirates.name,
-            location: delivery.order.outlet.exactLocation // GPS coordinates as JSON object
+            name: delivery.order.outlet?.name,
+            phone: delivery.order.outlet?.whatsappNo,
+            emirate: delivery.order.outlet?.emirates.name,
+            location: delivery.order.outlet?.exactLocation // GPS coordinates as JSON object
           },
           deliveryInfo: {
             deliveryId: delivery.id,
@@ -205,7 +205,7 @@ export async function PATCH(request: Request) {
         orderDetails: {
           orderId: delivery.order.id,
           customerLocation: delivery.order.deliveryLocation,
-          outletName: delivery.order.outlet.name
+          outletName: delivery.order.outlet?.name
         }
       });
 
