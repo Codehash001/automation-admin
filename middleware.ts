@@ -9,6 +9,9 @@ const publicPaths = [
   '/api/public',
   '/_next',
   '/favicon.ico',
+  '/api/food',
+  '/api/emirates',
+  
 ];
 
 
