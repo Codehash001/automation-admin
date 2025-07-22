@@ -11,11 +11,7 @@ const publicPaths = [
   '/favicon.ico',
 ];
 
-// Paths that require API key authentication
-const apiKeyPaths = [
-  '/api/food/cuisine',
-  // Add other API paths that should use API key auth
-];
+
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -25,69 +21,86 @@ export async function middleware(request: NextRequest) {
     publicPaths.some(path => pathname.startsWith(path)) ||
     pathname.includes('.') ||
     pathname.startsWith('/_next') ||
-    pathname === '/api/auth/verify' // Skip verification endpoint
-    || pathname === '/login'
-    || pathname === '/'
-    || pathname === '/dashboard'
+    pathname === '/api/auth/verify' || // Skip verification endpoint
+    pathname === '/login' ||
+    pathname === '/' ||
+    pathname === '/dashboard'
   ) {
     return NextResponse.next();
   }
 
   // Check if this is an API key authenticated path
-  const isApiKeyPath = apiKeyPaths.some(path => pathname.startsWith(path));
+  const isPublicPath = publicPaths.some(path => pathname.startsWith(path));
   
-  // Handle API key authentication
-  if (isApiKeyPath) {
+  // Handle API key authentication for protected paths
+  if (!isPublicPath) {
     const authHeader = request.headers.get('authorization');
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'Missing or invalid Authorization header. Use Bearer token.' },
-        { status: 401 }
-      );
-    }
+    // Try API key authentication if Authorization header is present
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const verificationResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/auth/verify`, {
+          method: 'POST',
+          headers: {
+            'Authorization': authHeader,
+            'Content-Type': 'application/json',
+          },
+        });
 
-    try {
-      // Call our verification endpoint
-      // const verificationUrl = new URL('/api/auth/verify', request.url);
-      const verificationResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/verify`, {
-        method: 'POST',
-        headers: {
-          'Authorization': authHeader,
-          'Content-Type': 'application/json',
-        },
-      });
+        if (verificationResponse.ok) {
+          const { user } = await verificationResponse.json();
+          
+          // Clone the request headers and add user info
+          const requestHeaders = new Headers(request.headers);
+          requestHeaders.set('x-user-id', String(user.id));
+          requestHeaders.set('x-user-email', user.email || '');
+          requestHeaders.set('x-user-role', user.role || '');
+          requestHeaders.set('x-user-name', user.name || '');
+          requestHeaders.set('x-auth-method', 'api-key');
 
-      if (!verificationResponse.ok) {
-        const error = await verificationResponse.json();
-        return NextResponse.json(
-          { error: error.error || 'Invalid API key' },
-          { status: 401 }
-        );
+          return NextResponse.next({
+            request: {
+              headers: requestHeaders,
+            },
+          });
+        }
+      } catch (error) {
+        console.error('API key verification failed:', error);
+        // Continue to try session auth if API key verification fails
       }
-
-      const { user } = await verificationResponse.json();
-      
-      // Clone the request headers and add user info
-      const requestHeaders = new Headers(request.headers);
-      requestHeaders.set('x-user-id', String(user.id));
-      requestHeaders.set('x-user-email', user.email || '');
-      requestHeaders.set('x-user-role', user.role || '');
-      requestHeaders.set('x-user-name', user.name || '');
-      requestHeaders.set('x-auth-method', 'api-key');
-
-      return NextResponse.next({
-        request: {
-          headers: requestHeaders,
-        },
-      });
-    } catch (error) {
-      console.error('API key verification failed:', error);
-      return NextResponse.json(
-        { error: 'Failed to verify API key' },
-        { status: 500 }
-      );
     }
+
+    // If API key auth failed or wasn't attempted, try session auth
+    const sessionToken = request.cookies.get('auth-token')?.value;
+    if (sessionToken) {
+      try {
+        const authResult = await verifySession(sessionToken);
+        
+        if (authResult.user) {
+          // Clone the request headers and add user info
+          const requestHeaders = new Headers(request.headers);
+          requestHeaders.set('x-user-id', String(authResult.user.id));
+          requestHeaders.set('x-user-email', authResult.user.email || '');
+          requestHeaders.set('x-user-role', authResult.user.role || '');
+          requestHeaders.set('x-user-name', authResult.user.name || '');
+          requestHeaders.set('x-auth-method', 'session');
+
+          return NextResponse.next({
+            request: {
+              headers: requestHeaders,
+            },
+          });
+        }
+      } catch (error) {
+        console.error('Session verification failed:', error);
+      }
+    }
+
+    // If both authentication methods failed, return 401
+    return NextResponse.json(
+      { error: 'Authentication required. Please provide a valid API key or session.' },
+      { status: 401 }
+    );
   }
 
   // Handle session-based authentication for other protected routes
