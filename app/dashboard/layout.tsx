@@ -8,7 +8,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ROLE_LABELS, ROLE_COLORS } from '@/lib/auth';
+import { ROLE_LABELS, ROLE_COLORS } from '@/lib/roles';
 
 type MenuItem = {
   name: string;
@@ -273,9 +273,9 @@ function DashboardContent({
             </div>
           </div>
           <div className="mt-3 flex items-center justify-between">
-            <Badge className={`text-xs ${ROLE_COLORS[user.role as keyof typeof ROLE_COLORS]}`}>
+            <Badge className={`text-xs ${user?.role ? ROLE_COLORS[user.role as keyof typeof ROLE_COLORS] || 'bg-gray-100 text-gray-800' : 'bg-gray-100 text-gray-800'}`}>
               <Shield className="w-3 h-3 mr-1" />
-              {ROLE_LABELS[user.role as keyof typeof ROLE_LABELS]}
+              {user?.role ? ROLE_LABELS[user.role as keyof typeof ROLE_LABELS] || user.role : 'User'}
             </Badge>
             <Button
               variant="ghost"

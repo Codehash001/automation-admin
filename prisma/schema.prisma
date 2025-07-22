@@ -381,16 +381,32 @@ model Appointment {
 
 // Authentication Models
 model User {
+  id            Int       @id @default(autoincrement())
+  email         String    @unique
+  name          String?
+  password      String
+  role          UserRole  @default(VIEWER)
+  isActive      Boolean   @default(true)
+  lastLogin     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  apiKeys       ApiKey[]
+}
+
+model ApiKey {
   id          Int      @id @default(autoincrement())
-  email       String   @unique
-  password    String   // Hashed password
+  key         String   @unique
   name        String
-  role        UserRole @default(ADMIN)
-  isActive    Boolean  @default(true)
-  lastLogin   DateTime?
-  sessions    Session[]
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  revoked     Boolean  @default(false)
+  lastUsedAt  DateTime?
+  expiresAt   DateTime
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model Session {

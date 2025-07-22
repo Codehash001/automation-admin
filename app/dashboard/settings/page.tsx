@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { Settings, Lock, Users, Plus, Edit, Trash2, Eye, EyeOff } from 'lucide-react';
+import { Settings, Lock, Users, Plus, Edit, Trash2, Eye, EyeOff, Copy } from 'lucide-react';
 
 interface User {
   id: number;
@@ -27,6 +27,15 @@ interface CurrentUser {
   email: string;
   name: string;
   role: string;
+}
+
+interface ApiKey {
+  id: string;
+  name: string;
+  key?: string;
+  lastUsedAt: string | null;
+  expiresAt: string;
+  createdAt: string;
 }
 
 export default function SettingsPage() {
@@ -68,10 +77,19 @@ export default function SettingsPage() {
     isActive: true,
   });
 
+  // API Keys
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [isCreatingKey, setIsCreatingKey] = useState(false);
+  const [isLoadingKeys, setIsLoadingKeys] = useState(true);
+  const [newKey, setNewKey] = useState<string | null>(null);
+  const [showNewKey, setShowNewKey] = useState(false);
+
   // Fetch current user and users list
   useEffect(() => {
     fetchCurrentUser();
     fetchUsers();
+    fetchApiKeys();
   }, []);
 
   const fetchCurrentUser = async () => {
@@ -88,15 +106,60 @@ export default function SettingsPage() {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch('/api/users');
+      // First get the current user's role
+      const currentUser = await fetch('/api/auth/me');
+      const currentUserData = await currentUser.json();
+      
+      if (!currentUserData.user) {
+        throw new Error('Failed to fetch current user');
+      }
+      
+      // Then fetch users with the role in headers
+      const response = await fetch('/api/users', {
+        headers: {
+          'x-user-role': currentUserData.user.role
+        }
+      });
+      
       if (response.ok) {
         const data = await response.json();
-        setUsers(data.users);
+        setUsers(data.users || []);
+      } else {
+        const errorData = await response.json();
+        console.error('Error fetching users:', errorData);
+        toast({
+          title: "Error",
+          description: errorData.error || 'Failed to fetch users',
+          variant: "destructive",
+        });
       }
     } catch (error) {
-      console.error('Error fetching users:', error);
+      console.error('Error in fetchUsers:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : 'Failed to fetch users',
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchApiKeys = async () => {
+    try {
+      const response = await fetch('/api/auth/api-keys');
+      if (!response.ok) throw new Error('Failed to fetch API keys');
+      const data = await response.json();
+      setApiKeys(data);
+    } catch (error) {
+      console.error('Error fetching API keys:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load API keys. Please refresh the page or try again later.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingKeys(false);
     }
   };
 
@@ -280,6 +343,101 @@ export default function SettingsPage() {
     return isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
   };
 
+  const createApiKey = async () => {
+    if (!newKeyName.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Please enter a name for the API key',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsCreatingKey(true);
+    try {
+      const response = await fetch('/api/auth/api-keys', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: newKeyName }),
+        credentials: 'include', // Important for sending cookies with the request
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create API key');
+      }
+
+      const data = await response.json();
+      setNewKey(data.key);
+      setNewKeyName('');
+      await fetchApiKeys();
+      setShowNewKey(true);
+
+      toast({
+        title: 'Success',
+        description: 'API key created successfully',
+      });
+    } catch (error) {
+      console.error('Error creating API key:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to create API key',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsCreatingKey(false);
+    }
+  };
+
+  const deleteApiKey = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this API key? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/auth/api-keys', {
+        method: 'DELETE',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id }),
+        credentials: 'include', // Important for sending cookies with the request
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete API key');
+      }
+
+      await fetchApiKeys();
+      toast({
+        title: 'Success',
+        description: 'API key deleted successfully',
+      });
+    } catch (error) {
+      console.error('Error deleting API key:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to delete API key',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({
+      title: 'Copied!',
+      description: 'API key copied to clipboard',
+    });
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString();
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -378,6 +536,124 @@ export default function SettingsPage() {
             </div>
             <Button type="submit">Change Password</Button>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* API Keys Section */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>API Keys</CardTitle>
+          <CardDescription>
+            Manage your API keys for programmatic access.
+            {newKey && showNewKey && (
+              <div className="mt-4 p-4 bg-muted rounded-md relative">
+                <p className="text-sm font-medium mb-2">Your new API key (copy it now, you won't see it again):</p>
+                <div className="flex items-center justify-between bg-background p-2 rounded">
+                  <code className="text-sm font-mono">{newKey}</code>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => copyToClipboard(newKey)}
+                    className="h-8 w-8"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute top-2 right-2 h-8 w-8 p-0"
+                  onClick={() => setShowNewKey(false)}
+                >
+                  <span className="sr-only">Close</span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </Button>
+              </div>
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="key-name">Create New API Key</Label>
+              <div className="flex space-x-2">
+                <Input
+                  id="key-name"
+                  placeholder="e.g., Production Server"
+                  value={newKeyName}
+                  onChange={(e) => setNewKeyName(e.target.value)}
+                  disabled={isCreatingKey}
+                />
+                <Button
+                  onClick={createApiKey}
+                  disabled={isCreatingKey || !newKeyName.trim()}
+                >
+                  {isCreatingKey ? 'Creating...' : 'Create Key'}
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <h3 className="text-lg font-medium mb-4">Your API Keys</h3>
+              {isLoadingKeys ? (
+                <div className="flex items-center justify-center p-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                </div>
+              ) : apiKeys.length === 0 ? (
+                <div className="text-center p-8 text-muted-foreground">
+                  No API keys found. Create your first API key above.
+                </div>
+              ) : (
+                <div className="border rounded-md">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Created</TableHead>
+                        <TableHead>Expires</TableHead>
+                        <TableHead className="w-[100px]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {apiKeys.map((key) => (
+                        <TableRow key={key.id}>
+                          <TableCell className="font-medium">{key.name}</TableCell>
+                          <TableCell>{formatDate(key.createdAt)}</TableCell>
+                          <TableCell>{formatDate(key.expiresAt)}</TableCell>
+                          <TableCell>
+                            <div className="flex space-x-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => deleteApiKey(key.id)}
+                                className="text-red-600 hover:text-red-800"
+                                title="Delete key"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
 

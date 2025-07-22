@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '@/lib/prisma';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET!;
 
 // Add debugging for JWT_SECRET
 console.log('🔑 Login API JWT_SECRET configured:', JWT_SECRET ? 'Yes' : 'No');
