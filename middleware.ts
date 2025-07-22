@@ -8,7 +8,7 @@ const publicPaths = [
   '/api/auth/register',
   '/api/public',
   '/_next',
-  '/favicon.ico'
+  '/favicon.ico',
 ];
 
 // Paths that require API key authentication
@@ -26,6 +26,9 @@ export async function middleware(request: NextRequest) {
     pathname.includes('.') ||
     pathname.startsWith('/_next') ||
     pathname === '/api/auth/verify' // Skip verification endpoint
+    || pathname === '/login'
+    || pathname === '/'
+    || pathname === '/dashboard'
   ) {
     return NextResponse.next();
   }
@@ -46,8 +49,8 @@ export async function middleware(request: NextRequest) {
 
     try {
       // Call our verification endpoint
-      const verificationUrl = new URL('/api/auth/verify', request.url);
-      const verificationResponse = await fetch(verificationUrl.toString(), {
+      // const verificationUrl = new URL('/api/auth/verify', request.url);
+      const verificationResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/verify`, {
         method: 'POST',
         headers: {
           'Authorization': authHeader,
