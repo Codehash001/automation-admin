@@ -88,6 +88,14 @@ const CustomTimePicker = ({ value, onChange, className, required }: { value: str
 };
 
 // Types
+type AdditionalPrice = {
+  id?: number;
+  name: string;
+  value: number;
+  type: 'fixed' | 'percentage';
+  isActive: boolean;
+};
+
 type Outlet = {
   id: number;
   name: string;
@@ -116,6 +124,7 @@ type Outlet = {
     open: string;
     close: string;
   };
+  additionalPrices: AdditionalPrice[];
 };
 
 type Emirates = {
@@ -149,9 +158,14 @@ export default function OutletsPage() {
       lng: '',
     },
     operatingHours: {
-      open: '',
-      close: '',
+      open: '09:00',
+      close: '23:00',
     },
+    additionalPrices: [
+      { name: 'VAT', value: 5, type: 'percentage' as const, isActive: true },
+      { name: 'SERVICE_FEE', value: 10, type: 'fixed' as const, isActive: true },
+      { name: 'DELIVERY_FEE', value: 15, type: 'fixed' as const, isActive: true },
+    ] as AdditionalPrice[],
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
@@ -224,6 +238,13 @@ export default function OutletsPage() {
         status: selectedOutlet.status,
         exactLocation: selectedOutlet.exactLocation || { lat: '', lng: '' },
         operatingHours: selectedOutlet.operatingHours || { open: '', close: '' },
+        additionalPrices: selectedOutlet.additionalPrices.length > 0 
+          ? selectedOutlet.additionalPrices 
+          : [
+              { name: 'VAT', value: 5, type: 'percentage' as const, isActive: true },
+              { name: 'SERVICE_FEE', value: 10, type: 'fixed' as const, isActive: true },
+              { name: 'DELIVERY_FEE', value: 15, type: 'fixed' as const, isActive: true },
+            ],
       });
     } else {
       resetForm();
@@ -515,6 +536,37 @@ export default function OutletsPage() {
     });
   };
 
+  // Add a new price field
+  const addPriceField = () => {
+    setFormData(prev => ({
+      ...prev,
+      additionalPrices: [
+        ...prev.additionalPrices,
+        { name: '', value: 0, type: 'fixed', isActive: true }
+      ]
+    }));
+  };
+
+  // Update a price field
+  const updatePriceField = (index: number, field: keyof AdditionalPrice, value: any) => {
+    const newPrices = [...formData.additionalPrices];
+    (newPrices[index] as any)[field] = field === 'value' ? parseFloat(value) || 0 : value;
+    
+    setFormData(prev => ({
+      ...prev,
+      additionalPrices: newPrices
+    }));
+  };
+
+  // Remove a price field
+  const removePriceField = (index: number) => {
+    const newPrices = formData.additionalPrices.filter((_, i) => i !== index);
+    setFormData(prev => ({
+      ...prev,
+      additionalPrices: newPrices
+    }));
+  };
+
   // Reset form
   const resetForm = () => {
     setFormData({
@@ -528,9 +580,14 @@ export default function OutletsPage() {
         lng: '',
       },
       operatingHours: {
-        open: '',
-        close: '',
+        open: '09:00',
+        close: '23:00',
       },
+      additionalPrices: [
+        { name: 'VAT', value: 5, type: 'percentage', isActive: true },
+        { name: 'SERVICE_FEE', value: 10, type: 'fixed', isActive: true },
+        { name: 'DELIVERY_FEE', value: 15, type: 'fixed', isActive: true },
+      ],
     });
     setSelectedOutlet(null);
   };
@@ -546,6 +603,13 @@ export default function OutletsPage() {
       status: outlet.status,
       exactLocation: outlet.exactLocation || { lat: '', lng: '' },
       operatingHours: outlet.operatingHours || { open: '', close: '' },
+      additionalPrices: outlet.additionalPrices.length > 0 
+        ? outlet.additionalPrices 
+        : [
+            { name: 'VAT', value: 5, type: 'percentage' as const, isActive: true },
+            { name: 'SERVICE_FEE', value: 10, type: 'fixed' as const, isActive: true },
+            { name: 'DELIVERY_FEE', value: 15, type: 'fixed' as const, isActive: true },
+          ],
     });
     setIsDialogOpen(true);
   };
@@ -614,6 +678,10 @@ export default function OutletsPage() {
         : '/api/food/outlet';
       
       const method = selectedOutlet ? 'PUT' : 'POST';
+      
+      // Filter out invalid price entries
+      const validPrices = formData.additionalPrices.filter(p => p.name.trim() !== '' && p.value > 0);
+      
       const payload = {
         name: formData.name.trim(),
         emiratesId: parseInt(formData.emiratesId),
@@ -628,6 +696,7 @@ export default function OutletsPage() {
           open: formData.operatingHours.open,
           close: formData.operatingHours.close,
         },
+        additionalPrices: validPrices,
       };
 
       const response = await fetch(url, {
@@ -702,6 +771,21 @@ export default function OutletsPage() {
     }
   };
 
+  // Update the table to show additional prices
+  const renderAdditionalPrices = (prices: AdditionalPrice[]) => {
+    if (!prices || prices.length === 0) return 'No additional prices';
+    
+    return (
+      <div className="space-y-1">
+        {prices.filter(p => p.isActive).map((price, idx) => (
+          <div key={idx} className="text-xs">
+            {price.name}: {price.value}{price.type === 'percentage' ? '%' : ' AED'}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -746,19 +830,20 @@ export default function OutletsPage() {
               <TableHead>Contact</TableHead>
               <TableHead>Location (Lat, Lng)</TableHead>
               <TableHead>Operating Hours</TableHead>
+              <TableHead>Additional Prices</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8">
+                <TableCell colSpan={9} className="text-center py-8">
                   Loading outlets...
                 </TableCell>
               </TableRow>
             ) : filteredOutlets.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8">
+                <TableCell colSpan={9} className="text-center py-8">
                   {searchTerm ? 'No matching outlets found' : 'No outlets added yet'}
                 </TableCell>
               </TableRow>
@@ -802,6 +887,9 @@ export default function OutletsPage() {
                   </TableCell>
                   <TableCell>
                     {outlet.operatingHours ? `${outlet.operatingHours.open} - ${outlet.operatingHours.close}` : 'N/A'}
+                  </TableCell>
+                  <TableCell>
+                    {renderAdditionalPrices(outlet.additionalPrices || [])}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -997,6 +1085,83 @@ export default function OutletsPage() {
                         </label>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Additional Prices */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Additional Prices</label>
+                    {formData.additionalPrices.map((price, index) => (
+                      <div key={index} className="grid grid-cols-12 gap-2 items-center">
+                        <div className="col-span-4">
+                          <Input
+                            placeholder="Price name (e.g., VAT)"
+                            value={price.name}
+                            onChange={(e) => updatePriceField(index, 'name', e.target.value)}
+                          />
+                        </div>
+                        
+                        <div className="col-span-2">
+                          <Input
+                            type="number"
+                            placeholder="Value"
+                            value={price.value}
+                            onChange={(e) => updatePriceField(index, 'value', e.target.value)}
+                            min={0}
+                            step={0.01}
+                          />
+                        </div>
+                        
+                        <div className="col-span-3">
+                          <Select
+                            value={price.type}
+                            onValueChange={(value: 'fixed' | 'percentage') => updatePriceField(index, 'type', value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="fixed">Fixed Amount (AED)</SelectItem>
+                              <SelectItem value="percentage">Percentage (%)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        
+                        <div className="col-span-2 flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id={`active-${index}`}
+                            checked={price.isActive}
+                            onChange={(e) => updatePriceField(index, 'isActive', e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <label htmlFor={`active-${index}`} className="text-sm">
+                            Active
+                          </label>
+                        </div>
+                        
+                        <div className="col-span-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removePriceField(index)}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      onClick={addPriceField}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Price
+                    </Button>
                   </div>
                 </div>
               </div>

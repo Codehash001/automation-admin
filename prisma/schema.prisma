@@ -36,17 +36,20 @@ model Cuisine {
 }
 
 model Outlet {
-  id           Int             @id @default(autoincrement())
-  name         String
-  emirates     Emirates        @relation(fields: [emiratesId], references: [id])
-  emiratesId   Int
-  whatsappNo   String
-  status       OutletStatus
-  exactLocation Json        @default("{\"lat\": 0.0, \"lng\": 0.0}") // Default to a neutral location
-  operatingHours Json       @default("{\"open\": \"00:00\", \"close\": \"00:00\"}") // Default to closed hours
-  menus        Menu[]
-  orders       Order[]
-  cuisines     OutletCuisine[]
+  id                Int                @id @default(autoincrement())
+  name              String             @default("")
+  emirates          Emirates           @relation(fields: [emiratesId], references: [id])
+  emiratesId        Int
+  whatsappNo        String             @default("")
+  status            OutletStatus       @default(CLOSED)
+  exactLocation     Json               @default("{\"lat\": 0.0, \"lng\": 0.0}")
+  operatingHours    Json               @default("{\"open\": \"00:00\", \"close\": \"00:00\"}")
+  menus             Menu[]
+  orders            Order[]
+  cuisines          OutletCuisine[]
+  additionalPrices  AdditionalPrice[]
+
+  @@map("outlets")
 }
 
 model OutletCuisine {
@@ -241,13 +244,17 @@ enum OutletStatus {
 }
 
 model AdditionalPrice {
-  id            Int      @id @default(autoincrement())
-  name          String   @unique
-  value         Decimal  @db.Decimal(10, 5)
-  type          String   // 'percentage' or 'fixed'
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id            Int       @id @default(autoincrement())
+  name          String    @default("")
+  value         Decimal   @db.Decimal(10, 5) @default(0)
+  type          String    @default("fixed") // 'percentage' or 'fixed'
+  isActive      Boolean   @default(true)
+  outlet        Outlet?   @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  outletId      Int?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([outletId])
 }
 
 // Grocery Store Models

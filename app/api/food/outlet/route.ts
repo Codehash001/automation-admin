@@ -29,6 +29,14 @@ type OperatingHours = {
   close: string;
 };
 
+type AdditionalPriceData = {
+  id?: number;
+  name: string;
+  value: number;
+  type: 'fixed' | 'percentage';
+  isActive: boolean;
+};
+
 type OutletData = {
   name: string;
   emiratesId: number;
@@ -37,6 +45,7 @@ type OutletData = {
   status: 'OPEN' | 'BUSY' | 'CLOSED';
   exactLocation: LocationData;
   operatingHours: OperatingHours;
+  additionalPrices?: AdditionalPriceData[];
 };
 
 export async function GET(request: Request) {
@@ -94,6 +103,7 @@ export async function GET(request: Request) {
               cuisine: true
             }
           },
+          additionalPrices: true,
           _count: {
             select: {
               menus: true,
@@ -157,6 +167,7 @@ export async function GET(request: Request) {
               cuisine: true
             }
           },
+          additionalPrices: true,
           _count: {
             select: {
               menus: true,
@@ -295,6 +306,7 @@ export async function GET(request: Request) {
             cuisine: true
           }
         },
+        additionalPrices: true,
         _count: {
           select: {
             menus: true,
@@ -411,7 +423,15 @@ export async function POST(request: Request) {
             create: data.cuisineIds.map((cuisineId: number) => ({
               cuisine: { connect: { id: cuisineId } }
             }))
-          }
+          },
+          additionalPrices: data.additionalPrices && data.additionalPrices.length > 0 ? {
+            create: data.additionalPrices.map(price => ({
+              name: price.name,
+              value: price.value,
+              type: price.type,
+              isActive: price.isActive !== false
+            }))
+          } : undefined
         },
         include: {
           emirates: true,
@@ -419,7 +439,8 @@ export async function POST(request: Request) {
             include: {
               cuisine: true
             }
-          }
+          },
+          additionalPrices: true
         }
       });
 
@@ -462,7 +483,8 @@ export async function PUT(request: Request) {
     const existingOutlet = await prisma.outlet.findUnique({
       where: { id: parseInt(id) },
       include: {
-        cuisines: true
+        cuisines: true,
+        additionalPrices: true
       }
     });
 
@@ -560,6 +582,46 @@ export async function PUT(request: Request) {
         });
       }
 
+      // Update additional prices
+      if (data.additionalPrices) {
+        // Delete existing prices not in the new list
+        const existingPriceIds = data.additionalPrices
+          .filter(price => price.id)
+          .map(price => price.id!);
+        
+        await prisma.additionalPrice.deleteMany({
+          where: {
+            outletId: parseInt(id),
+            id: { notIn: existingPriceIds }
+          }
+        });
+
+        // Update or create prices
+        for (const price of data.additionalPrices) {
+          if (price.id) {
+            await prisma.additionalPrice.update({
+              where: { id: price.id },
+              data: {
+                name: price.name,
+                value: price.value,
+                type: price.type,
+                isActive: price.isActive !== false
+              }
+            });
+          } else {
+            await prisma.additionalPrice.create({
+              data: {
+                name: price.name,
+                value: price.value,
+                type: price.type,
+                isActive: price.isActive !== false,
+                outletId: parseInt(id)
+              }
+            });
+          }
+        }
+      }
+
       // Fetch the updated outlet with all relationships
       return await prisma.outlet.findUnique({
         where: { id: parseInt(id) },
@@ -570,6 +632,7 @@ export async function PUT(request: Request) {
               cuisine: true
             }
           },
+          additionalPrices: true,
           _count: {
             select: {
               menus: true,
