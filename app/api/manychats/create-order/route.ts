@@ -3,23 +3,40 @@ import prisma from '@/lib/prisma';
 
 // Helper function to parse the text items into structured data
 function parseItems(textItems: string | string[]) {
+  // If input is null or undefined, return empty array
+  if (textItems == null) {
+    console.warn('[parseItems] Received null or undefined input');
+    return [];
+  }
+
   // If it's a single item, convert it to an array for consistent processing
   const itemsArray = Array.isArray(textItems) ? textItems : [textItems];
   
   const result: { name: string; price: number; quantity: number; }[] = [];
   
-  for (const itemStr of itemsArray) {
-    if (!itemStr || typeof itemStr !== 'string') continue;
+  for (let itemStr of itemsArray) {
+    // Skip non-string items
+    if (typeof itemStr !== 'string') {
+      console.warn(`[parseItems] Skipping non-string item:`, itemStr);
+      continue;
+    }
+    
+    // Clean the string first - remove any leading 'null,' (case insensitive) and trim
+    itemStr = itemStr.replace(/^null\s*,\s*/i, '').trim();
+    
+    // Skip empty strings
+    if (!itemStr) continue;
     
     // Split by comma to get individual items
-    const items = itemStr.split(',').map((i: string) => i.trim()).filter(Boolean);
+    const items = itemStr.split(',')
+      .map((i: string) => i.trim())
+      .filter(Boolean);
     
     for (let item of items) {
-      // Handle the format: "Appam - 2" or "null, Appam - 2"
-      item = item.replace(/^null\s*,\s*/, '').trim();
+      // Skip if item is empty after trimming
       if (!item) continue;
       
-      // Match item name and price (e.g., "Appam - 2")
+      // Match item name and price (e.g., "test item - 10")
       const match = item.match(/^(.+?)\s*-\s*(\d+(?:\.\d+)?)\s*$/);
       if (!match) {
         console.warn(`[parseItems] Could not parse item: "${item}"`);
@@ -28,6 +45,12 @@ function parseItems(textItems: string | string[]) {
       
       const name = match[1].trim();
       const price = parseFloat(match[2]);
+      
+      // Skip if price is not a valid number
+      if (isNaN(price)) {
+        console.warn(`[parseItems] Invalid price in item: "${item}"`);
+        continue;
+      }
       
       // Check if we already have this exact item (same name and price)
       const existingItem = result.find((i: any) => 

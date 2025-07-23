@@ -11,7 +11,10 @@ const publicPaths = [
   '/favicon.ico',
   '/api/food',
   '/api/emirates',
-  
+  '/api/food/outlet',
+  '/api/food/menu',
+  '/api/food/menu-item',
+  '/api/food/order',
 ];
 
 
