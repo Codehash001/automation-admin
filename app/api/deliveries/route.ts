@@ -294,9 +294,22 @@ export async function GET(request: Request) {
   }
 }
 
-// Update rider's live location
+// Update rider's live location or delivery location
 export async function PATCH(request: Request) {
   try {
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+    
+    // Handle delivery location update - this is not supported in the current schema
+    // as the Delivery model doesn't have a location field
+    if (id) {
+      return NextResponse.json(
+        { success: false, error: 'Delivery location updates are not supported in the current schema' },
+        { status: 400 }
+      );
+    }
+    
+    // Handle rider location update (existing functionality)
     const { phone, liveLocation } = await request.json();
 
     if (!phone || !liveLocation) {
@@ -325,7 +338,9 @@ export async function PATCH(request: Request) {
     const updatedRider = await prisma.driver.update({
       where: { id: rider.id },
       data: {
-        liveLocation,
+        liveLocation: {
+          set: liveLocation
+        },
         updatedAt: new Date()
       }
     });
@@ -342,9 +357,9 @@ export async function PATCH(request: Request) {
     });
 
   } catch (error) {
-    console.error('Error updating rider location:', error);
+    console.error('Error updating location:', error);
     return NextResponse.json(
-      { error: 'Failed to update rider location' },
+      { success: false, error: 'Failed to update location' },
       { status: 500 }
     );
   }
