@@ -105,9 +105,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const { items: rawItems, orderType, customerPhoneNumber, outletId } = body as GenerateInvoiceRequest;
+    const { items: rawItems, orderType, customerPhoneNumber, outletId: rawOutletId } = body as GenerateInvoiceRequest;
     
-    // Validate outletId is provided
+    // Convert outletId to number and validate
+    const outletId = Number(rawOutletId);
+    if (isNaN(outletId)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid outlet ID format' },
+        { status: 400 }
+      );
+    }
+
+    // Validate outletId is provided and is a valid number
     if (!outletId) {
       return NextResponse.json(
         { success: false, error: 'Outlet ID is required' },
