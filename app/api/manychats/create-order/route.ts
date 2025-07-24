@@ -72,26 +72,79 @@ function parseItems(textItems: string | string[]) {
 
 // Calculate order totals
 async function calculateTotals(items: Array<{ price: number; quantity: number }>, outletId: number) {
-  // Get additional prices from database
-  const additionalPrices = await prisma.additionalPrice.findMany({
-    where: { isActive: true },
+  // Get the outlet with its additional prices
+  const outlet = await prisma.outlet.findUnique({
+    where: { id: outletId },
+    include: {
+      additionalPrices: {
+        where: { isActive: true }
+      },
+      emirates: true
+    }
   });
 
-  const serviceFeeRate = additionalPrices.find((p: { name: string; }) => p.name === 'SERVICE_FEE')?.value.toNumber() || 0.1;
-  const deliveryFee = additionalPrices.find((p: { name: string; }) => p.name === 'DELIVERY_FEE')?.value.toNumber() || 10;
-  const vatRate = additionalPrices.find((p: { name: string; }) => p.name === 'VAT')?.value.toNumber() || 0.05;
+  if (!outlet) {
+    throw new Error('Outlet not found');
+  }
 
+  // Calculate subtotal
   const subtotal = items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
-  const serviceFee = subtotal * serviceFeeRate;
-  const vat = (subtotal + serviceFee + deliveryFee) * vatRate;
-  const total = subtotal + serviceFee + deliveryFee + vat;
+
+  // Initialize fees
+  const fees: Array<{
+    name: string;
+    amount: number;
+    type: 'fixed' | 'percentage';
+    rate?: number;
+    appliedTo?: 'subtotal' | 'total';
+  }> = [];
+
+  // Process additional prices
+  let totalFees = 0;
+  let total = subtotal;
+
+  // Process each additional price
+  for (const price of outlet.additionalPrices) {
+    let amount = 0;
+    
+    if (price.type === 'percentage') {
+      amount = subtotal * price.value.toNumber() / 100;
+      fees.push({
+        name: price.name,
+        amount: parseFloat(amount.toFixed(2)),
+        type: 'percentage',
+        rate: price.value.toNumber(),
+        appliedTo: 'subtotal'
+      });
+    } else {
+      amount = price.value.toNumber();
+      fees.push({
+        name: price.name,
+        amount: parseFloat(amount.toFixed(2)),
+        type: 'fixed'
+      });
+    }
+    
+    totalFees += amount;
+  }
+
+  // Apply fees to total
+  total += totalFees;
 
   return {
     subtotal: parseFloat(subtotal.toFixed(2)),
-    serviceFee: parseFloat(serviceFee.toFixed(2)),
-    deliveryFee: parseFloat(deliveryFee.toFixed(2)),
-    vat: parseFloat(vat.toFixed(2)),
-    total: parseFloat(total.toFixed(2))
+    fees,
+    total: parseFloat(total.toFixed(2)),
+    outlet: {
+      id: outlet.id,
+      name: outlet.name,
+      whatsappNo: outlet.whatsappNo,
+      emirates: outlet.emirates ? {
+        id: outlet.emirates.id,
+        name: outlet.emirates.name,
+        deliveryFee: 0 // Default to 0, update if needed
+      } : null
+    }
   };
 }
 
@@ -216,9 +269,7 @@ export async function POST(request: Request) {
     console.log('[ManyChats] Mapped order items:', JSON.stringify(orderItems, null, 2));
 
     // Calculate totals
-    const subtotal = orderItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
-    console.log('[ManyChats] Calculating order totals');
-    const { serviceFee, deliveryFee, vat, total } = await calculateTotals(
+    const { subtotal, fees, total, outlet } = await calculateTotals(
       orderItems.map((item: any) => ({
         price: item.price,
         quantity: item.quantity
@@ -246,9 +297,6 @@ export async function POST(request: Request) {
           note: note || '',
           status: 'PENDING',
           subtotal,
-          serviceFee,
-          deliveryFee,
-          vat,
           total,
         },
         include: {
@@ -346,9 +394,6 @@ export async function POST(request: Request) {
         items: groupedItems,
         summary: {
           subtotal: `${fullOrder.subtotal.toFixed(2)} AED`,
-          deliveryFee: `${fullOrder.deliveryFee.toFixed(2)} AED`,
-          serviceFee: `${fullOrder.serviceFee.toFixed(2)} AED`,
-          vat: `${fullOrder.vat.toFixed(2)} AED`,
           total: `${fullOrder.total.toFixed(2)} AED`
         },
         note: fullOrder.note
