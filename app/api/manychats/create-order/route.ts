@@ -99,6 +99,9 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
     appliedTo?: 'subtotal' | 'total';
   }> = [];
 
+  // Initialize service fee (default to 0)
+  let serviceFee = 0;
+  
   // Process additional prices
   let totalFees = 0;
   let total = subtotal;
@@ -109,20 +112,32 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
     
     if (price.type === 'percentage') {
       amount = subtotal * price.value.toNumber() / 100;
-      fees.push({
-        name: price.name,
-        amount: parseFloat(amount.toFixed(2)),
-        type: 'percentage',
-        rate: price.value.toNumber(),
-        appliedTo: 'subtotal'
-      });
+      
+      // Check if this is the service fee
+      if (price.name.toLowerCase().includes('service')) {
+        serviceFee = parseFloat(amount.toFixed(2));
+      } else {
+        fees.push({
+          name: price.name,
+          amount: parseFloat(amount.toFixed(2)),
+          type: 'percentage',
+          rate: price.value.toNumber(),
+          appliedTo: 'subtotal'
+        });
+      }
     } else {
       amount = price.value.toNumber();
-      fees.push({
-        name: price.name,
-        amount: parseFloat(amount.toFixed(2)),
-        type: 'fixed'
-      });
+      
+      // Check if this is the service fee
+      if (price.name.toLowerCase().includes('service')) {
+        serviceFee = parseFloat(amount.toFixed(2));
+      } else {
+        fees.push({
+          name: price.name,
+          amount: parseFloat(amount.toFixed(2)),
+          type: 'fixed'
+        });
+      }
     }
     
     totalFees += amount;
@@ -133,6 +148,9 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
 
   return {
     subtotal: parseFloat(subtotal.toFixed(2)),
+    serviceFee: serviceFee,
+    deliveryFee: 0, // Default to 0, can be updated if needed
+    vat: 0, // Default to 0, can be calculated if needed
     fees,
     total: parseFloat(total.toFixed(2)),
     outlet: {
@@ -269,7 +287,7 @@ export async function POST(request: Request) {
     console.log('[ManyChats] Mapped order items:', JSON.stringify(orderItems, null, 2));
 
     // Calculate totals
-    const { subtotal, fees, total, outlet } = await calculateTotals(
+    const { subtotal, serviceFee, deliveryFee, vat, fees, total, outlet } = await calculateTotals(
       orderItems.map((item: any) => ({
         price: item.price,
         quantity: item.quantity
@@ -297,6 +315,9 @@ export async function POST(request: Request) {
           note: note || '',
           status: 'PENDING',
           subtotal,
+          serviceFee,
+          deliveryFee,
+          vat,
           total,
         },
         include: {

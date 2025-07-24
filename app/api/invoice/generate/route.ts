@@ -254,7 +254,7 @@ export async function POST(request: Request) {
     
     // Add subtotal
     message += `Subtotal: ${formatCurrency(subtotal)}\n`;
-    message += `--------------------`;
+    message += `----------------------------`;
 
     message += `\n`;
     
@@ -263,14 +263,17 @@ export async function POST(request: Request) {
     applicableFees.forEach((fee: any) => {
       message += `${fee.name}: ${formatCurrency(fee.amount)}\n`;
     });
-    message += `--------------------`;
+    message += `----------------------------`;
     message += `\n\n`;
-    message += `--------------------`;
+    message += `----------------------------`;
 
-    
+    message += `\n`;
     // Add total
     message += `*Total: ${formatCurrency(total)}*`;
-    message += `____________________`;
+    message += `\n`;
+    message += `____________________________`;
+    message += `\n`;
+    message += `____________________________`;
 
     // Prepare the response
     const response: InvoiceResponse = {

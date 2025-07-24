@@ -9,17 +9,26 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/hooks/use-toast';
 
+interface Location {
+  lat: number;
+  lng: number;
+}
+
 export default function LiveLocationSharing({ params }: { params: { deliveryId: string } }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [otp, setOtp] = useState('');
   const [showOtpForm, setShowOtpForm] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [location, setLocation] = useState<Location | null>(null);
   const [watchId, setWatchId] = useState<number | null>(null);
   const [isVerified, setIsVerified] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [error, setError] = useState('');
+  const [serviceWorkerRegistered, setServiceWorkerRegistered] = useState(false);
+  
+
+  
 
   const sendLocationToServer = async (latitude: number, longitude: number) => {
     try {
@@ -65,11 +74,38 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
     }
   };
 
+  // Register service worker on component mount
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/location-worker.js')
+        .then(registration => {
+          console.log('ServiceWorker registration successful');
+          setServiceWorkerRegistered(true);
+        })
+        .catch(err => {
+          console.error('ServiceWorker registration failed:', err);
+          setError('Failed to enable background location tracking');
+        });
+    }
+
+    // Cleanup service worker on unmount
+    return () => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+          registrations.forEach(registration => {
+            registration.unregister();
+          });
+        });
+      }
+    };
+  }, []);
+
   // Check for OTP in URL
   useEffect(() => {
-    const urlOtp = searchParams.get('otp');
-    if (urlOtp) {
-      verifyOtp(urlOtp);
+    const otpParam = searchParams.get('otp');
+    if (otpParam) {
+      setOtp(otpParam);
+      verifyOtp(otpParam);
     }
   }, [searchParams]);
 
@@ -127,24 +163,21 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
 
   const startSharingLocation = async () => {
     if (!navigator.geolocation) {
-      toast({
-        title: "Error",
-        description: "Geolocation is not supported by your browser",
-        variant: "destructive",
-      });
+      setError('Geolocation is not supported by your browser');
       return;
     }
 
-    // Stop any existing location watch
-    if (watchId !== null) {
-      navigator.geolocation.clearWatch(watchId);
-      setWatchId(null);
-    }
+    setIsSharing(true);
+    setError('');
 
     try {
       // First, get the current position immediately
       const initialPosition = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject);
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        });
       });
       
       const { latitude, longitude } = initialPosition.coords;
@@ -153,31 +186,36 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
       // Send initial location to server
       await sendLocationToServer(latitude, longitude);
       
-      // Then start watching for position updates
-      const id = navigator.geolocation.watchPosition(
-        async (position) => {
-          const { latitude, longitude } = position.coords;
-          setLocation({ lat: latitude, lng: longitude });
-          
-          // Send updated location to server
-          await sendLocationToServer(latitude, longitude);
-        },
-        (error) => {
-          console.error('Error getting location:', error);
-          toast({
-            title: "Location Error",
-            description: "Unable to get your location. Please make sure location services are enabled.",
-            variant: "destructive",
-          });
-        },
-        {
-          enableHighAccuracy: true,
-          maximumAge: 10000,  // Accept a position whose age is no more than 10 seconds
-          timeout: 5000,      // Time to wait for a position (5 seconds)
+      // Start background location tracking using service worker
+      if (serviceWorkerRegistered && 'serviceWorker' in navigator) {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          if (registration.active) {
+            const channel = new MessageChannel();
+            
+            channel.port1.onmessage = (event) => {
+              if (event.data.status === 'TRACKING_STARTED') {
+                console.log('Background location tracking started');
+              } else if (event.data.status === 'TRACKING_STOPPED') {
+                console.log('Background location tracking stopped');
+              }
+            };
+            
+            registration.active.postMessage({
+              type: 'START_LOCATION_TRACKING',
+              deliveryId: parseInt(params.deliveryId),
+              interval: 10000 // 10 seconds
+            }, [channel.port2]);
+          }
+        } catch (swError) {
+          console.error('Service Worker Error:', swError);
+          // Fallback to regular geolocation if service worker fails
+          startRegularGeolocationWatch();
         }
-      );
-      
-      setWatchId(id);
+      } else {
+        // Fallback to regular geolocation if service workers are not supported
+        startRegularGeolocationWatch();
+      }
     } catch (error) {
       console.error('Error initializing location sharing:', error);
       toast({
@@ -192,16 +230,59 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
     });
   };
 
-  const stopSharingLocation = () => {
+  // Helper function to start regular geolocation watch (fallback)
+  const startRegularGeolocationWatch = () => {
+    console.log('Starting regular geolocation watch as fallback');
+    const id = navigator.geolocation.watchPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        setLocation({ lat: latitude, lng: longitude });
+        await sendLocationToServer(latitude, longitude);
+      },
+      (error) => {
+        console.error('Geolocation error:', error);
+        toast({
+          title: "Location Error",
+          description: "Unable to get your location. Please ensure location services are enabled.",
+          variant: "destructive",
+        });
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 10000,  // Accept a position whose age is no more than 10 seconds
+        timeout: 5000,      // Time to wait for a position (5 seconds)
+      }
+    );
+    setWatchId(id);
+  };
+
+  const stopSharingLocation = async () => {
+    // Stop any active geolocation watch
     if (watchId !== null) {
       navigator.geolocation.clearWatch(watchId);
       setWatchId(null);
-      setLocation(null);
-      toast({
-        title: "Info",
-        description: "Stopped sharing your live location",
-      });
     }
+    
+    // Stop service worker tracking if active
+    if (serviceWorkerRegistered && 'serviceWorker' in navigator) {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        if (registration.active) {
+          registration.active.postMessage({
+            type: 'STOP_LOCATION_TRACKING'
+          });
+        }
+      } catch (error) {
+        console.error('Error stopping service worker tracking:', error);
+      }
+    }
+    
+    setLocation(null);
+    setIsSharing(false);
+    toast({
+      title: "Info",
+      description: "Stopped sharing your live location",
+    });
   };
 
   if (!isVerified && showOtpForm) {
