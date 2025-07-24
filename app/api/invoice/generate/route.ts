@@ -13,6 +13,7 @@ interface GenerateInvoiceRequest {
   items: string | string[];
   orderType: 'Delivery' | 'Pickup';
   customerPhoneNumber?: string;  // Customer's WhatsApp number to send the invoice to
+  outletId?: number;  // Outlet ID for the order
 }
 
 interface InvoiceResponse {
@@ -104,7 +105,34 @@ export async function POST(request: Request) {
       );
     }
 
-    const { items: rawItems, orderType, customerPhoneNumber } = body as GenerateInvoiceRequest;
+    const { items: rawItems, orderType, customerPhoneNumber, outletId } = body as GenerateInvoiceRequest;
+    
+    // Validate outletId is provided
+    if (!outletId) {
+      return NextResponse.json(
+        { success: false, error: 'Outlet ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Verify the outlet exists
+    const outlet = await prisma.outlet.findUnique({
+      where: { id: outletId },
+      include: {
+        additionalPrices: {
+          where: { isActive: true }
+        },
+        emirates: true
+      }
+    });
+
+    if (!outlet) {
+      return NextResponse.json(
+        { success: false, error: 'Outlet not found' },
+        { status: 404 }
+      );
+    }
+
     let processedItems: ProcessedItem[] = [];
 
     // Handle different input formats
@@ -149,10 +177,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get all active additional prices
-    const additionalPrices = await prisma.additionalPrice.findMany({
-      where: { isActive: true }
-    });
+    // Use the additional prices from the outlet instead of fetching all
+    const additionalPrices = outlet.additionalPrices;
 
     const subtotal = Number(
       processedItems
@@ -219,15 +245,23 @@ export async function POST(request: Request) {
     
     // Add subtotal
     message += `Subtotal: ${formatCurrency(subtotal)}\n`;
+    message += `--------------------`;
+
+    message += `\n`;
     
     // Add applicable fees
     const applicableFees = fees.filter((fee: any) => fee.applicable && fee.amount > 0);
     applicableFees.forEach((fee: any) => {
       message += `${fee.name}: ${formatCurrency(fee.amount)}\n`;
     });
+    message += `--------------------`;
+    message += `\n\n`;
+    message += `--------------------`;
+
     
     // Add total
-    message += `\n*Total: ${formatCurrency(total)}*`;
+    message += `*Total: ${formatCurrency(total)}*`;
+    message += `____________________`;
 
     // Prepare the response
     const response: InvoiceResponse = {
@@ -246,7 +280,13 @@ export async function POST(request: Request) {
           amount: fee.amount
         })),
         total,
-        orderType
+        orderType,
+        date: uaeTime,
+        outlet: {
+          id: outlet.id,
+          name: outlet.name,
+          emirate: outlet.emirates?.name || 'UAE'
+        }
       }
     };
 
