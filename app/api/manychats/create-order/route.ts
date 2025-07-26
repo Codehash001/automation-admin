@@ -90,7 +90,7 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
   // Calculate subtotal
   const subtotal = items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
 
-  // Initialize fees
+  // Initialize fees and charges
   const fees: Array<{
     name: string;
     amount: number;
@@ -99,11 +99,9 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
     appliedTo?: 'subtotal' | 'total';
   }> = [];
 
-  // Initialize service fee (default to 0)
   let serviceFee = 0;
-  
-  // Process additional prices
-  let totalFees = 0;
+  let vat = 0;
+  let deliveryFee = 0;
   let total = subtotal;
 
   // Process each additional price
@@ -113,8 +111,12 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
     if (price.type === 'percentage') {
       amount = subtotal * price.value.toNumber() / 100;
       
+      // Check if this is VAT (5%)
+      if (price.name.toLowerCase().includes('vat')) {
+        vat = parseFloat(amount.toFixed(2));
+      } 
       // Check if this is the service fee
-      if (price.name.toLowerCase().includes('service')) {
+      else if (price.name.toLowerCase().includes('service')) {
         serviceFee = parseFloat(amount.toFixed(2));
       } else {
         fees.push({
@@ -128,31 +130,45 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
     } else {
       amount = price.value.toNumber();
       
+      // Check if this is a delivery fee
+      if (price.name.toLowerCase().includes('delivery')) {
+        deliveryFee = parseFloat(amount.toFixed(2));
+      }
       // Check if this is the service fee
-      if (price.name.toLowerCase().includes('service')) {
+      else if (price.name.toLowerCase().includes('service')) {
         serviceFee = parseFloat(amount.toFixed(2));
       } else {
         fees.push({
           name: price.name,
           amount: parseFloat(amount.toFixed(2)),
-          type: 'fixed'
+          type: 'fixed',
+          appliedTo: 'subtotal'
         });
       }
     }
     
-    totalFees += amount;
+    // Add to total
+    total += amount;
   }
 
-  // Apply fees to total
-  total += totalFees;
+  // If VAT wasn't explicitly set but is required, calculate it (5% of subtotal + service fee + delivery fee)
+  if (vat === 0) {
+    vat = parseFloat(((subtotal + serviceFee + deliveryFee) * 0.05).toFixed(2));
+    total += vat;
+  }
 
-  return {
+  // Prepare summary object
+  const summary = {
     subtotal: parseFloat(subtotal.toFixed(2)),
     serviceFee: serviceFee,
-    deliveryFee: 0, // Default to 0, can be updated if needed
-    vat: 0, // Default to 0, can be calculated if needed
-    fees,
+    deliveryFee: deliveryFee,
+    vat: vat,
     total: parseFloat(total.toFixed(2)),
+    fees: fees
+  };
+
+  return {
+    ...summary,
     outlet: {
       id: outlet.id,
       name: outlet.name,
@@ -160,7 +176,7 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
       emirates: outlet.emirates ? {
         id: outlet.emirates.id,
         name: outlet.emirates.name,
-        deliveryFee: 0 // Default to 0, update if needed
+        deliveryFee: deliveryFee
       } : null
     }
   };
@@ -287,7 +303,7 @@ export async function POST(request: Request) {
     console.log('[ManyChats] Mapped order items:', JSON.stringify(orderItems, null, 2));
 
     // Calculate totals
-    const { subtotal, serviceFee, deliveryFee, vat, fees, total, outlet } = await calculateTotals(
+    const { subtotal, serviceFee, deliveryFee, vat, total, fees } = await calculateTotals(
       orderItems.map((item: any) => ({
         price: item.price,
         quantity: item.quantity
@@ -415,7 +431,16 @@ export async function POST(request: Request) {
         items: groupedItems,
         summary: {
           subtotal: `${fullOrder.subtotal.toFixed(2)} AED`,
-          total: `${fullOrder.total.toFixed(2)} AED`
+          serviceFee: fullOrder.serviceFee ? `${fullOrder.serviceFee.toFixed(2)} AED` : '0.00 AED',
+          deliveryFee: fullOrder.deliveryFee ? `${fullOrder.deliveryFee.toFixed(2)} AED` : '0.00 AED',
+          vat: fullOrder.vat ? `${fullOrder.vat.toFixed(2)} AED` : '0.00 AED',
+          total: `${fullOrder.total.toFixed(2)} AED`,
+          fees: fees.map(fee => ({
+            name: fee.name,
+            amount: `${fee.amount.toFixed(2)} AED`,
+            type: fee.type,
+            ...(fee.rate && { rate: `${fee.rate}%` })
+          }))
         },
         note: fullOrder.note
       }
