@@ -15,7 +15,8 @@ const publicPaths = [
   '/api/food/menu',
   '/api/food/menu-item',
   '/api/food/order',
-  '/api/riders'
+  '/api/riders',
+  '/live'
 ];
 
 
