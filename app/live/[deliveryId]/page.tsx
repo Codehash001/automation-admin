@@ -22,62 +22,109 @@ interface Location {
   address?: string;
 }
 
-interface DeliveryDetails {
+interface Emirates {
+  id: number;
+  name: string;
+  // Add other emirates fields as needed
+}
+
+interface Customer {
+  id: number;
+  name: string;
+  whatsappNumber: string;
+  // Note: These come from delivery.order level in the API
+  // deliveryAddress: string;
+  // deliveryLocation: string;
+}
+
+interface Outlet {
+  id: number;
+  name: string;
+  exactLocation: string; // This is the address string
+  location: string | null; // This is the "lat,lng" string
+}
+
+interface Order {
   id: number;
   status: string;
-  order: {
-    id: number;
-    orderNumber: string;
-    customer: {
-      id: number;
-      name: string;
-      phone: string;
-      address: string;
-      location: string | null; // Keep as string for storage, but parse when needed
-    };
-    outlet: {
-      id: number;
-      name: string;
-      address: string;
-      location: string | null; // Keep as string for storage, but parse when needed
-    };
-  };
+  orderNumber: string;
+  customer: Customer;
+  outlet: Outlet | null;
+  deliveryAddress: string;
+  deliveryLocation: string | null;
+  emirates: Emirates | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface Driver {
+  id: number;
+  name: string;
+  phone: string;
+  liveLocation: string | null; // "lat,lng" format
+}
+
+interface CompleteDeliveryDetails {
+  id: number;
+  status: string;
+  driver: Driver | null;
+  order: Order;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface RouteInfo {
+  coordinates: Array<[number, number]>;
+  distance: number | null;
+  duration: number | null;
 }
 
 export default function LiveLocationSharing({ params }: { params: { deliveryId: string } }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [otp, setOtp] = useState('');
-  const [showOtpForm, setShowOtpForm] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const watchIdRef = useRef<number | null>(null);
+  
+  // Core delivery details states
+  const [deliveryDetails, setDeliveryDetails] = useState<CompleteDeliveryDetails | null>(null);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [pickupLocation, setPickupLocation] = useState<Location | null>(null);
   const [dropoffLocation, setDropoffLocation] = useState<Location | null>(null);
-  const [route, setRoute] = useState<Array<[number, number]>>([]);
-  const [routeDistance, setRouteDistance] = useState<number | null>(null);
-  const [routeDuration, setRouteDuration] = useState<number | null>(null);
-  const [deliveryDetails, setDeliveryDetails] = useState<DeliveryDetails | null>(null);
+  
+  // Route state
+  const [routeInfo, setRouteInfo] = useState<RouteInfo>({
+    coordinates: [],
+    distance: null,
+    duration: null
+  });
+  
   const [activeTab, setActiveTab] = useState<'map' | 'details'>('map');
   const [isNavigating, setIsNavigating] = useState(false);
-  const watchId = useRef<number | null>(null);
   const [isVerified, setIsVerified] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
-  const [error, setError] = useState('');
   const [serviceWorkerRegistered, setServiceWorkerRegistered] = useState(false);
   const [isLocationPermissionGranted, setIsLocationPermissionGranted] = useState(false);
+  const [isOtpVerified, setIsOtpVerified] = useState(false);
+  const [pickedUp, setPickedUp] = useState(false);
+  const [showRoute, setShowRoute] = useState(false);
 
   // Helper function to parse location from string or object
-  const parseLocation = (location: string | { lat: number; lng: number } | null | undefined) => {
+  const parseLocation = (location: any): { lat: number; lng: number } | null => {
     if (!location) return null;
     
-    // If it's already an object with lat and lng
+    // If it's already in the correct format
     if (typeof location === 'object' && 'lat' in location && 'lng' in location) {
-      return { lat: location.lat, lng: location.lng };
+      return {
+        lat: parseFloat(location.lat),
+        lng: parseFloat(location.lng)
+      };
     }
     
     // If it's a string in "lat,lng" format
-    if (typeof location === 'string') {
-      const [lat, lng] = location.split(',').map(Number);
+    if (typeof location === 'string' && location.includes(',')) {
+      const [lat, lng] = location.split(',').map(coord => parseFloat(coord.trim()));
       if (!isNaN(lat) && !isNaN(lng)) {
         return { lat, lng };
       }
@@ -87,24 +134,23 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
   };
 
   // Helper function to safely render location
-  const renderLocation = (location: any, fallback = 'Location not available') => {
-    console.log('Rendering location:', location); // Debug log
-    
+  const renderLocation = (location: any, fallback: string = 'Location not available') => {
     if (!location) return fallback;
     
     // If it's a string, return it directly
     if (typeof location === 'string') return location;
     
-    // If it's an object with lat/lng, convert to string
+    // If it's an object with lat and lng, format it
     if (typeof location === 'object' && location !== null) {
       if ('lat' in location && 'lng' in location) {
-        return `${location.lat},${location.lng}`;
+        return `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}`;
       }
-      // If it has an address property, use that
-      if ('address' in location) return location.address;
+      if ('address' in location) {
+        return location.address;
+      }
     }
     
-    // If we can't handle the format, return the fallback
+    // Fallback for any other case
     return fallback;
   };
 
@@ -135,8 +181,8 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
         if (location) setPickupLocation(location);
       }
       
-      if (savedDetails.order?.customer?.location) {
-        const location = parseLocation(savedDetails.order.customer.location);
+      if (savedDetails.order?.deliveryLocation) {
+        const location = parseLocation(savedDetails.order.deliveryLocation);
         if (location) setDropoffLocation(location);
       }
     }
@@ -199,10 +245,10 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
       };
       
       const outletLocation = processLocation(data.order.outlet?.location);
-      const customerLocation = processLocation(data.order.customer?.location);
+      const customerLocation = processLocation(data.order.deliveryLocation);
       
       // Update state with new data
-      const updatedDetails = {
+      const updatedDetails: CompleteDeliveryDetails = {
         ...data,
         _lastUpdated: new Date().toISOString(),
         order: {
@@ -211,10 +257,7 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
             ...data.order.outlet,
             location: outletLocation ? `${outletLocation.lat},${outletLocation.lng}` : data.order.outlet?.location
           },
-          customer: {
-            ...data.order.customer,
-            location: customerLocation ? `${customerLocation.lat},${customerLocation.lng}` : data.order.customer?.location
-          }
+          deliveryLocation: customerLocation ? `${customerLocation.lat},${customerLocation.lng}` : data.order.deliveryLocation
         }
       };
       
@@ -274,9 +317,11 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
 
   // Handle route updates from the Map component
   const handleRouteUpdate = useCallback((newRoute: Array<[number, number]>, distance: number, duration: number) => {
-    setRoute(newRoute);
-    setRouteDistance(distance);
-    setRouteDuration(duration);
+    setRouteInfo({
+      coordinates: newRoute,
+      distance,
+      duration
+    });
   }, []);
 
   // Calculate route between points
@@ -284,17 +329,34 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
     try {
       // In a real app, you would use a routing service like Mapbox, Google Maps, or OSRM
       // This is a simplified version that just returns a straight line
-      setRoute([
-        [origin.lng, origin.lat],
-        [destination.lng, destination.lat]
-      ]);
+      const response = await fetch(
+        `https://api.mapbox.com/directions/v5/mapbox/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}` +
+        `?geometries=geojson&access_token=${process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN}`
+      );
       
-      // In a real implementation, you would call a routing API here
-      // const response = await fetch(`/api/route?origin=${origin.lng},${origin.lat}&destination=${destination.lng},${destination.lat}`);
-      // const routeData = await response.json();
-      // setRoute(routeData.routes[0].geometry.coordinates);
+      if (!response.ok) {
+        throw new Error('Failed to fetch route');
+      }
+      
+      const data = await response.json();
+      
+      if (data.routes && data.routes[0]) {
+        const route = data.routes[0];
+        const coordinates = route.geometry.coordinates.map((coord: number[]) => 
+          [coord[0], coord[1]] as [number, number]
+        );
+        
+        setRouteInfo({
+          coordinates,
+          distance: route.distance,
+          duration: route.duration
+        });
+        
+        return coordinates;
+      }
     } catch (error) {
       console.error('Error calculating route:', error);
+      // Don't fall back to straight line - just keep the last good route
     }
   }, []);
 
@@ -314,10 +376,10 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
 
   // Update route when dropoff is available and pickup is reached
   useEffect(() => {
-    if (currentLocation && dropoffLocation && deliveryDetails?.status === 'PICKED_UP') {
+    if (currentLocation && dropoffLocation && deliveryDetails?.order?.status === 'PICKED_UP') {
       calculateRoute(currentLocation, dropoffLocation);
     }
-  }, [currentLocation, dropoffLocation, deliveryDetails?.status, calculateRoute]);
+  }, [currentLocation, dropoffLocation, deliveryDetails?.order?.status, calculateRoute]);
 
   // Check for existing valid OTP in localStorage on component mount
   useEffect(() => {
@@ -368,181 +430,129 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
 
   // Verify OTP and start delivery tracking
   const verifyOtp = async (otpToVerify: string) => {
-    const otpValue = otpToVerify.trim();
-    if (!otpValue) {
-      toast({
-        title: "Error",
-        description: "Please enter OTP",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsLoading(true);
-    setError('');
-
     try {
-      const response = await fetch('/api/deliveries/otp', {
-        method: 'PUT',  // Changed from POST to PUT
+      setIsLoading(true);
+      const response = await fetch(`/api/deliveries/otp`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_API_KEY}`
         },
-        body: JSON.stringify({ 
-          otp: otpValue,
+        body: JSON.stringify({
           deliveryId: params.deliveryId,
-          checkOnly: false // Let the backend handle validation
-        }),
+          otp: otpToVerify
+        })
       });
 
-      const data = await response.json();
-      
       if (!response.ok) {
-        throw new Error(data.error || 'Invalid OTP');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to verify OTP');
       }
 
-      // Check if the response indicates successful verification
-      if (!data.success || !data.delivery) {
-        throw new Error(data.error || 'Verification failed');
-      }
-
-      // Store the OTP for future use (2-hour validity)
-      storeOtp(otpValue);
+      const { delivery } = await response.json();
       
-      // Update delivery details from the response
-      if (data.delivery?.order) {
-        const { order } = data.delivery;
+      if (!delivery) {
+        throw new Error('Invalid response from server');
+      }
+
+      // Set the complete delivery details
+      setDeliveryDetails(delivery);
+
+      // Parse and set locations for the map
+      if (delivery.driver?.liveLocation) {
+        const [lat, lng] = delivery.driver.liveLocation.split(',').map(Number);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          setCurrentLocation({ lat, lng });
+        }
+      }
+
+      // Parse pickup location (from outlet)
+      console.log('Outlet data:', delivery.order?.outlet);
+      if (delivery.order?.outlet) {
+        console.log('Outlet location:', delivery.order.outlet.location);
+        console.log('Outlet address:', delivery.order.outlet.address);
         
-        // Set pickup location (outlet)
-        if (order.outlet?.address) {
-          const location = parseLocation(order.outlet.address);
-          if (location) {
-            setPickupLocation(location);
-          } else {
-            console.warn('Could not parse outlet location:', order.outlet.address);
-          }
+        let lat: number | null = null;
+        let lng: number | null = null;
+        
+        // Check if location is available as a string
+        if (delivery.order.outlet.location) {
+          console.log('Using outlet.location for coordinates');
+          [lat, lng] = delivery.order.outlet.location.split(',').map(Number);
+        } 
+        // Check if address is an object with lat/lng
+        else if (delivery.order.outlet.address && typeof delivery.order.outlet.address === 'object') {
+          console.log('Using outlet.address object for coordinates');
+          lat = parseFloat(delivery.order.outlet.address.lat);
+          lng = parseFloat(delivery.order.outlet.address.lng);
         }
-
-        // Set dropoff location (customer)
-        if (order.customer?.location) {
-          const location = parseLocation(order.customer.location);
-          if (location) {
-            setDropoffLocation(location);
-          } else {
-            console.warn('Could not parse customer location:', order.customer.location);
-          }
+        // Fallback to address as string if it contains coordinates
+        else if (typeof delivery.order.outlet.address === 'string' && delivery.order.outlet.address.includes(',')) {
+          console.log('Using outlet.address string for coordinates');
+          [lat, lng] = delivery.order.outlet.address.split(',').map(Number);
         }
-
-        // Update delivery details
-        setDeliveryDetails({
-          id: data.delivery.id,
-          status: data.delivery.status,
-          order: {
-            id: order.id,
-            orderNumber: order.orderNumber || `#${order.id}`,
-            customer: {
-              id: order.customer.id,
-              name: order.customer.name,
-              phone: order.customer.phone,
-              address: order.customer.address || '',
-              // Convert location to string if it's an object
-              location: typeof order.customer.location === 'object' 
-                ? `${order.customer.location.lat},${order.customer.location.lng}`
-                : order.customer.location || ''
-            },
-            outlet: {
-              id: order.outlet?.id || 0,
-              name: order.outlet?.name || 'Unknown Outlet',
-              address: order.outlet?.address || '',
-              // Convert location to string if it's an object
-              location: order.outlet?.address
-            }
-          }
-        });
+        
+        console.log('Parsed coordinates:', { lat, lng });
+        
+        if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
+          const pickupAddress = delivery.order.outlet.exactLocation || 
+                             (typeof delivery.order.outlet.address === 'string' ? delivery.order.outlet.address : '') || 
+                             'Pickup location';
+          console.log('Setting pickup location:', { lat, lng, address: pickupAddress });
+          setPickupLocation({
+            lat,
+            lng,
+            address: pickupAddress
+          });
+        } else {
+          console.error('Failed to parse coordinates from outlet data');
+        }
+      } else {
+        console.error('No outlet data available in delivery.order');
       }
+
+      // Parse dropoff location
+      if (delivery.order?.deliveryLocation) {
+        const [lat, lng] = delivery.order.deliveryLocation.split(',').map(Number);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          setDropoffLocation({
+            lat,
+            lng,
+            address: delivery.order.deliveryAddress || 'Dropoff location'
+          });
+        }
+      }
+
+      // Store in localStorage for persistence
+      localStorage.setItem(`delivery_${delivery.id}`, JSON.stringify({
+        ...delivery,
+        _lastUpdated: new Date().toISOString()
+      }));
+
+      // Start location tracking
+      await startLocationTracking();
       
+      // Mark as verified
       setIsVerified(true);
-      setShowOtpForm(false);
-      
-      // Start location sharing after successful verification
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            setCurrentLocation({
-              lat: position.coords.latitude,
-              lng: position.coords.longitude
-            });
-            setIsLocationPermissionGranted(true);
-            
-            // Start watching position
-            const id = navigator.geolocation.watchPosition(
-              (pos) => {
-                updateLocation(pos);
-              },
-              (error) => {
-                console.error('Error getting location:', error);
-                toast({
-                  title: "Location Error",
-                  description: "Could not get your location. Please ensure location services are enabled.",
-                  variant: "destructive",
-                });
-              },
-              {
-                enableHighAccuracy: true,
-                maximumAge: 10000,
-                timeout: 5000
-              }
-            );
-            
-            // Store watch ID for cleanup
-            watchId.current = id;
-            setIsSharing(true);
-            
-            // Start service worker for background tracking if available
-            if ('serviceWorker' in navigator && serviceWorkerRegistered) {
-              navigator.serviceWorker.ready.then(registration => {
-                registration.active?.postMessage({
-                  type: 'START_LOCATION_TRACKING',
-                  deliveryId: params.deliveryId,
-                  interval: 10000,
-                  authToken: process.env.NEXT_PUBLIC_API_KEY
-                });
-              });
-            }
-          },
-          (error) => {
-            console.error('Error getting location:', error);
-            toast({
-              title: "Location Access Required",
-              description: "Please enable location access to share your live location.",
-              variant: "destructive",
-            });
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-          }
-        );
-      }
       
       toast({
-        title: "Verification Successful",
-        description: "You can now share your live location.",
+        title: "OTP Verified",
+        description: "Delivery details loaded successfully.",
       });
       
     } catch (error) {
-      console.error('Error verifying OTP:', error);
-      setError(error instanceof Error ? error.message : 'Failed to verify OTP');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to verify OTP';
+      console.error('OTP Verification Error:', error);
       toast({
         title: "Verification Failed",
-        description: error instanceof Error ? error.message : 'Failed to verify OTP',
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
   };
-
+  
   // Update location function
   const updateLocation = useCallback((position: GeolocationPosition) => {
     const newLocation = {
@@ -553,7 +563,7 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
     setCurrentLocation(newLocation);
     
     // If we have pickup location, check if we've reached it
-    if (pickupLocation && !deliveryDetails?.status.includes('PICKED_UP')) {
+    if (pickupLocation && !deliveryDetails?.order?.status.includes('PICKED_UP')) {
       const distance = getDistance(newLocation, pickupLocation);
       if (distance < 50) { // Within 50 meters of pickup
         // Update delivery status to PICKED_UP
@@ -562,7 +572,7 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
     }
     
     // If we have dropoff location and order is picked up, check if delivered
-    if (dropoffLocation && deliveryDetails?.status === 'PICKED_UP') {
+    if (dropoffLocation && deliveryDetails?.order?.status === 'PICKED_UP') {
       const distance = getDistance(newLocation, dropoffLocation);
       if (distance < 30) { // Within 30 meters of dropoff
         // Update delivery status to DELIVERED
@@ -572,7 +582,7 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
     
     // Send to server
     sendLocationToServer(newLocation.lat, newLocation.lng);
-  }, [pickupLocation, dropoffLocation, deliveryDetails?.status]);
+  }, [pickupLocation, dropoffLocation, deliveryDetails?.order?.status]);
 
   // Helper function to calculate distance between two points in meters
   const getDistance = (loc1: Location, loc2: Location) => {
@@ -615,6 +625,7 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
       });
       
       return data;
+      
     } catch (error) {
       console.error('Error updating delivery status:', error);
       toast({
@@ -655,11 +666,7 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
       setDeliveryDetails(prev => ({
         ...prev,
         ...updatedData,
-        // Ensure we don't overwrite the order details
-        order: {
-          ...prev?.order,
-          ...(updatedData.order || {})
-        }
+        _lastUpdated: new Date().toISOString()
       }));
 
       // Save to localStorage
@@ -667,10 +674,6 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
         const updatedDetails = {
           ...deliveryDetails,
           ...updatedData,
-          order: {
-            ...deliveryDetails.order,
-            ...(updatedData.order || {})
-          },
           _lastUpdated: new Date().toISOString()
         };
         localStorage.setItem(
@@ -691,256 +694,347 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
     }
   };
 
-  // Render the map view
-  const renderMapView = () => (
-    <div className="relative h-full w-full">
-      {currentLocation && (
-        <div className="absolute top-4 left-0 right-0 z-10 px-4">
-          <div className="bg-white rounded-lg shadow-lg p-4 max-w-md mx-auto">
-            <div className="flex items-center space-x-2">
-              <div className="flex-1">
-                <div className="flex items-center text-sm text-gray-600 mb-1">
-                  <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs mr-2">1</div>
-                  <span>{deliveryDetails?.order?.outlet?.name || 'Pickup Location'}</span>
-                </div>
-                <div className="text-xs text-gray-500 ml-8 mb-2">
-                  {renderLocation(deliveryDetails?.order?.outlet?.location, deliveryDetails?.order?.outlet?.address || 'Location not available')}
-                </div>
-                
-                <div className="h-6 border-l-2 border-gray-300 ml-3 my-1"></div>
-                
-                <div className="flex items-center text-sm text-gray-600">
-                  <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center text-white text-xs mr-2">2</div>
-                  <span>{deliveryDetails?.order?.customer?.name || 'Drop-off Location'}</span>
-                </div>
-                <div className="text-xs text-gray-500 ml-8">
-                  {renderLocation(deliveryDetails?.order?.customer?.location, deliveryDetails?.order?.customer?.address || 'Location not available')}
-                </div>
-              </div>
+  // Start location tracking
+  const startLocationTracking = useCallback(() => {
+    if (!navigator.geolocation) {
+      toast({
+        title: "Location Error",
+        description: "Geolocation is not supported by your browser",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Get current position first
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        const newLocation = { lat: latitude, lng: longitude };
+        setCurrentLocation(newLocation);
+        setIsLocationPermissionGranted(true);
+        
+        // Start watching position
+        const watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const { latitude, longitude } = pos.coords;
+            const updatedLocation = { lat: latitude, lng: longitude };
+            setCurrentLocation(updatedLocation);
+            
+            // Send location to server
+            sendLocationToServer(latitude, longitude);
+          },
+          (error) => {
+            console.error('Error getting location:', error);
+            // Don't show repeated timeout errors to avoid spamming the user
+            if (error.code !== error.TIMEOUT) {
+              let errorMessage = 'Could not get your location. ';
               
-              <div className="flex flex-col space-y-2">
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="h-8 w-8 p-0"
-                  onClick={() => {
-                    if (pickupLocation) {
-                      window.open(`https://www.google.com/maps/dir/?api=1&destination=${pickupLocation.lat},${pickupLocation.lng}`);
-                    }
-                  }}
-                  title="Navigate to pickup"
-                >
-                  <Navigation className="h-4 w-4" />
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="h-8 w-8 p-0"
-                  onClick={() => {
-                    if (dropoffLocation) {
-                      window.open(`https://www.google.com/maps/dir/?api=1&destination=${dropoffLocation.lat},${dropoffLocation.lng}`);
-                    }
-                  }}
-                  title="Navigate to dropoff"
-                >
-                  <MapPin className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
+              if (error.code === error.PERMISSION_DENIED) {
+                errorMessage += 'Please enable location access in your browser settings.';
+              } else if (error.code === error.POSITION_UNAVAILABLE) {
+                errorMessage += 'Location information is unavailable.';
+              } else {
+                errorMessage += 'Trying again...';
+              }
+              
+              toast({
+                title: "Location Error",
+                description: errorMessage,
+                variant: "destructive",
+              });
+            }
+          },
+          {
+            enableHighAccuracy: true,
+            maximumAge: 10000,  // Accept a position whose age is no greater than 10 seconds
+            timeout: 10000,     // 10 second timeout
+          }
+        );
+        
+        // Store watch ID for cleanup
+        watchIdRef.current = watchId;
+        setIsSharing(true);
+        
+        // Start service worker for background tracking if available
+        if ('serviceWorker' in navigator && serviceWorkerRegistered) {
+          navigator.serviceWorker.ready.then(registration => {
+            registration.active?.postMessage({
+              type: 'START_LOCATION_TRACKING',
+              deliveryId: params.deliveryId,
+              interval: 10000,  // 10 seconds
+              authToken: process.env.NEXT_PUBLIC_API_KEY
+            });
+          });
+        }
+      },
+      (error) => {
+        console.error('Error getting initial location:', error);
+        let errorMessage = 'Could not get your location. ';
+        
+        if (error.code === error.TIMEOUT) {
+          errorMessage = 'Location request timed out. Please check your location settings and try again.';
+        } else if (error.code === error.PERMISSION_DENIED) {
+          errorMessage = 'Location permission denied. Please enable location access in your browser settings.';
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          errorMessage = 'Location information is unavailable.';
+        }
+        
+        toast({
+          title: "Location Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,  // 10 seconds
+        maximumAge: 0    // Force fresh position
+      }
+    );
+  }, [params.deliveryId, serviceWorkerRegistered]);
+
+  // Cleanup function for location tracking
+  const stopLocationTracking = useCallback(() => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    setIsSharing(false);
+    
+    // Stop background tracking if service worker is active
+    if ('serviceWorker' in navigator && serviceWorkerRegistered) {
+      navigator.serviceWorker.ready.then(registration => {
+        registration.active?.postMessage({
+          type: 'STOP_LOCATION_TRACKING'
+        });
+      });
+    }
+  }, [serviceWorkerRegistered]);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      stopLocationTracking();
+    };
+  }, [stopLocationTracking]);
+
+  // Helper function to safely render location
+  const getLocationString = (location: any): string => {
+    if (!location) return 'Location not available';
+    
+    // Handle string format "lat,lng"
+    if (typeof location === 'string' && location.includes(',')) {
+      return location;
+    }
+    
+    // Handle object with lat/lng
+    if (typeof location === 'object' && location !== null) {
+      if ('lat' in location && 'lng' in location) {
+        return `${location.lat}, ${location.lng}`;
+      }
+      if ('address' in location) {
+        return location.address;
+      }
+    }
+    
+    // Fallback to string representation
+    return String(location);
+  };
+
+  // Render the map view
+  const renderMapView = () => {
+    console.log('Rendering map view with deliveryDetails:', deliveryDetails);
+    console.log('Pickup location:', pickupLocation);
+    console.log('Dropoff location:', dropoffLocation);
+    
+    if (!deliveryDetails || !pickupLocation) {
+      return (
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <p className="text-lg font-medium">Loading map data...</p>
+            {!pickupLocation && <p className="text-sm text-gray-500 mt-2">Loading pickup location...</p>}
+            {!dropoffLocation && <p className="text-sm text-gray-500 mt-2">Loading dropoff location...</p>}
           </div>
         </div>
-      )}
-      
-      <div className="h-full w-full">
-        <MapWithNoSSR
-          currentLocation={currentLocation}
-          pickupLocation={pickupLocation}
-          dropoffLocation={deliveryDetails?.status === 'PICKED_UP' ? dropoffLocation : null}
-          route={route}
-          onRouteUpdate={handleRouteUpdate}
-        />
-      </div>
-      
-      {/* Bottom action bar */}
-      <div className="absolute bottom-4 left-0 right-0 z-10 px-4">
-        <div className="bg-white rounded-lg shadow-lg p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <h3 className="font-medium">
-                {!deliveryDetails?.status.includes('PICKED_UP') 
-                  ? "Head to pickup location"
-                  : "Deliver to customer"}
-              </h3>
-              <p className="text-sm text-gray-500">
-                {deliveryDetails?.order?.orderNumber ? `Order #${deliveryDetails.order.orderNumber}` : ''}
-              </p>
-            </div>
-            
-            {deliveryDetails?.status === 'PICKED_UP' ? (
-              <Button 
-                onClick={() => updateDeliveryStatus('DELIVERED')}
-                className="bg-green-500 hover:bg-green-600"
-              >
-                Mark as Delivered
-              </Button>
-            ) : (
-              <Button 
-                onClick={() => updateDeliveryStatus('PICKED_UP')}
-                disabled={!pickupLocation || !currentLocation || getDistance(currentLocation, pickupLocation) > 50}
-              >
-                Pickup Complete
-              </Button>
-            )}
-          </div>
-          
-          {currentLocation && pickupLocation && (
-            <div className="mt-2 text-sm text-gray-500">
-              <div className="flex items-center">
-                <Clock className="h-4 w-4 mr-1" />
-                <span>
-                  {!deliveryDetails?.status.includes('PICKED_UP')
-                    ? `${Math.round(getDistance(currentLocation, pickupLocation))}m to pickup`
-                    : dropoffLocation 
-                      ? `${Math.round(getDistance(currentLocation, dropoffLocation))}m to dropoff`
-                      : 'Calculating...'}
-                </span>
-              </div>
-            </div>
+      );
+    }
+    
+    return (
+      <div className="h-full w-full relative">
+        <div className="absolute top-4 right-4 z-10 flex flex-col space-y-2">
+          {!pickedUp ? (
+            <button
+              onClick={() => setPickedUp(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-md font-medium"
+            >
+              Picked Up
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowRoute(true)}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow-md font-medium"
+            >
+              Show Dropoff Route
+            </button>
           )}
         </div>
-      </div>
-    </div>
-  );
-
-  // Render the delivery details view
-  const renderDetailsView = () => (
-    <div className="p-4">
-      <Card className="mb-4">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg">Order Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div>
-              <h4 className="text-sm font-medium text-gray-500">Order Number</h4>
-              <p>{deliveryDetails?.order?.orderNumber || 'N/A'}</p>
+        
+        <MapWithNoSSR
+          currentLocation={currentLocation}
+          pickupLocation={pickedUp ? null : pickupLocation}
+          dropoffLocation={pickedUp ? dropoffLocation : null}
+          route={routeInfo.coordinates}
+          onRouteUpdate={handleRouteUpdate}
+          showPickupRoute={!pickedUp || showRoute}
+          showDropoffRoute={pickedUp && showRoute}
+        />
+        
+        {/* Delivery info overlay */}
+        <div className="absolute bottom-4 left-4 right-4 bg-white rounded-lg shadow-lg p-4 max-w-md mx-auto">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-medium">Delivery to {deliveryDetails?.order?.customer?.name || 'Customer'}</h3>
+            <span className={`text-sm px-2 py-1 rounded-full ${
+              deliveryDetails?.order?.status === 'DELIVERED' ? 'bg-green-100 text-green-800' :
+              deliveryDetails?.order?.status === 'IN_TRANSIT' ? 'bg-blue-100 text-blue-800' :
+              'bg-yellow-100 text-yellow-800'
+            }`}>
+              {deliveryDetails?.order?.status || 'In Progress'}
+            </span>
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex items-start">
+              <div className="flex-shrink-0 mt-1">
+                <div className={`h-2 w-2 rounded-full ${pickedUp ? 'bg-green-500' : 'bg-blue-500'}`}></div>
+              </div>
+              <div className="ml-2">
+              <p className="text-sm font-medium">
+                {pickedUp ? 'Dropoff' : 'Pickup'}: {pickedUp 
+                  ? deliveryDetails?.order?.deliveryAddress || 'Customer location' 
+                  : typeof deliveryDetails?.order?.outlet?.exactLocation === 'string' 
+                    ? deliveryDetails?.order?.outlet?.exactLocation 
+                    : deliveryDetails?.order?.outlet?.name || 'Pickup location'}
+              </p>
+              </div>
             </div>
             
-            <div>
-              <h4 className="text-sm font-medium text-gray-500">Status</h4>
-              <div className="flex items-center">
-                {deliveryDetails?.status === 'DELIVERED' ? (
-                  <CheckCircle className="h-4 w-4 text-green-500 mr-1" />
-                ) : deliveryDetails?.status === 'CANCELLED' ? (
-                  <XCircle className="h-4 w-4 text-red-500 mr-1" />
-                ) : (
-                  <div className="h-2 w-2 rounded-full bg-blue-500 mr-2 animate-pulse"></div>
-                )}
-                <span className="capitalize">
-                  {deliveryDetails?.status?.toLowerCase().replace('_', ' ') || 'Processing'}
-                </span>
+            {routeInfo.distance && routeInfo.duration && (
+              <div className="flex justify-between text-sm mt-2 pt-2 border-t">
+                <div className="flex items-center">
+                  <Clock className="h-4 w-4 mr-1 text-gray-500" />
+                  <span>{formatDuration(routeInfo.duration)}</span>
+                </div>
+                <div className="flex items-center">
+                  <MapPin className="h-4 w-4 mr-1 text-gray-500" />
+                  <span>{formatDistance(routeInfo.distance)}</span>
+                </div>
               </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Render the details view
+  const renderDetailsView = () => {
+    if (!deliveryDetails) return null;
+    
+    return (
+      <div className="p-4 overflow-y-auto h-full">
+        <div className="bg-white rounded-lg shadow p-4 mb-4">
+          <h3 className="font-medium mb-3">Order Information</h3>
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm text-gray-500">Order Number</p>
+              <p className="font-medium">{deliveryDetails.order.id}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Status</p>
+              <p className="font-medium">{deliveryDetails.order.status}</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
-      
-      <Card className="mb-4">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg">Customer Details</CardTitle>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow p-4 mb-4">
+          <h3 className="font-medium mb-3">Customer Details</h3>
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm text-gray-500">Delivery Address</p>
+              <p className="font-medium">{deliveryDetails.order.customer.name}</p>
+              <p className="font-medium">{deliveryDetails.order.deliveryAddress}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow p-4">
+          <h3 className="font-medium mb-3">Outlet Details</h3>
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm text-gray-500">Name</p>
+              <p className="font-medium">{deliveryDetails.order.outlet?.name}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Render OTP form
+  const renderOtpForm = () => (
+    <div className="flex items-center justify-center min-h-screen bg-gray-50 p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle className="text-2xl">Verify Delivery</CardTitle>
+          <p className="text-sm text-gray-500">
+            Enter the OTP sent to your WhatsApp number to start the delivery
+          </p>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div>
-              <h4 className="text-sm font-medium text-gray-500">Name</h4>
-              <p>{deliveryDetails?.order?.customer?.name || 'N/A'}</p>
+              <Label htmlFor="otp">OTP</Label>
+              <Input
+                id="otp"
+                type="text"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                placeholder="Enter 6-digit OTP"
+                className="mt-1"
+              />
             </div>
-            <div>
-              <h4 className="text-sm font-medium text-gray-500">Address</h4>
-              <p>{deliveryDetails?.order?.customer?.address || 'N/A'}</p>
-            </div>
-            <div>
-              <h4 className="text-sm font-medium text-gray-500">Delivery location</h4>
-              <p>{renderLocation(deliveryDetails?.order?.customer?.location, deliveryDetails?.order?.customer?.address || 'Location not available')}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      
-      <Card className="mb-4">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg">Outlet Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div>
-              <h4 className="text-sm font-medium text-gray-500">Name</h4>
-              <p>{deliveryDetails?.order?.outlet?.name || 'N/A'}</p>
-            </div>
-            <div>
-              <h4 className="text-sm font-medium text-gray-500">Pickup Location</h4>
-              <p>{renderLocation(deliveryDetails?.order?.outlet?.location, deliveryDetails?.order?.outlet?.address || 'Location not available')}</p>
-            </div>
+            
+            <Button 
+              onClick={() => verifyOtp(otp)}
+              disabled={isLoading || otp.length < 4}
+              className="w-full"
+            >
+              {isLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              Verify & Start Delivery
+            </Button>
+            
+            {error && (
+              <p className="text-sm text-red-500">{error}</p>
+            )}
           </div>
         </CardContent>
       </Card>
     </div>
   );
 
-  // OTP Verification Form
-  if (showOtpForm) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-2xl">Verify Delivery</CardTitle>
-            <p className="text-sm text-gray-500">
-              Enter the OTP sent to your WhatsApp number to start the delivery
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="otp">OTP</Label>
-                <Input
-                  id="otp"
-                  type="text"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                  placeholder="Enter 6-digit OTP"
-                  className="mt-1"
-                />
-              </div>
-              
-              <Button 
-                onClick={() => verifyOtp(otp)}
-                disabled={isLoading || otp.length < 4}
-                className="w-full"
-              >
-                {isLoading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
-                Verify & Start Delivery
-              </Button>
-              
-              {error && (
-                <p className="text-sm text-red-500">{error}</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
+  // Main render
+  if (!isVerified || !deliveryDetails) {
+    return renderOtpForm();
   }
 
-  // Main delivery tracking view
   return (
     <div className="flex flex-col h-screen bg-gray-100">
-      {/* Header */}
       <header className="bg-white shadow-sm z-10">
         <div className="px-4 py-3 flex items-center justify-between">
           <h1 className="text-lg font-semibold">
-            {deliveryDetails?.order?.outlet?.name || 'Delivery'}
+            {deliveryDetails.order.outlet?.name || 'Delivery'}
           </h1>
           <div className="flex space-x-2">
             <Button 
@@ -961,7 +1055,6 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
         </div>
       </header>
       
-      {/* Main content */}
       <main className="flex-1 overflow-hidden">
         {activeTab === 'map' ? renderMapView() : renderDetailsView()}
       </main>
