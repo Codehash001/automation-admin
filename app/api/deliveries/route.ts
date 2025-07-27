@@ -297,50 +297,52 @@ export async function GET(request: Request) {
 // Update rider's live location or delivery location
 export async function PATCH(request: Request) {
   try {
-    const url = new URL(request.url);
-    const id = url.searchParams.get('id');
-    
-    // Handle delivery location update - this is not supported in the current schema
-    // as the Delivery model doesn't have a location field
-    if (id) {
-      return NextResponse.json(
-        { success: false, error: 'Delivery location updates are not supported in the current schema' },
-        { status: 400 }
-      );
-    }
-    
-    // Handle rider location update (existing functionality)
-    const { phone, liveLocation } = await request.json();
+    const { id, liveLocation } = await request.json();
 
-    if (!phone || !liveLocation) {
+    if (!id) {
       return NextResponse.json(
-        { error: 'Phone number and live location are required' },
+        { error: 'Delivery ID is required in the request body' },
         { status: 400 }
       );
     }
 
-    // Convert phone to standard format
-    const riderPhone = phone.startsWith('+') ? phone : `+${phone}`;
+    if (!liveLocation || !liveLocation.latitude || !liveLocation.longitude) {
+      return NextResponse.json(
+        { error: 'Live location with latitude and longitude is required' },
+        { status: 400 }
+      );
+    }
 
-    // Find the rider
-    const rider = await prisma.driver.findUnique({
-      where: { phone: riderPhone }
+    // Find the delivery and include the driver
+    const delivery = await prisma.delivery.findUnique({
+      where: { id: Number(id) },
+      include: {
+        driver: true  // Changed from 'rider' to 'driver' to match schema
+      }
     });
 
-    if (!rider) {
+    if (!delivery) {
       return NextResponse.json(
-        { error: 'Rider not found' },
+        { error: 'Delivery not found' },
         { status: 404 }
       );
     }
 
-    // Update rider's live location
-    const updatedRider = await prisma.driver.update({
-      where: { id: rider.id },
+    if (!delivery.driver) {
+      return NextResponse.json(
+        { error: 'No driver assigned to this delivery' },
+        { status: 400 }
+      );
+    }
+
+    // Format the location as a string for storage
+    const locationString = `${liveLocation.latitude},${liveLocation.longitude}`;
+
+    // Update driver's live location
+    const updatedDriver = await prisma.driver.update({
+      where: { id: delivery.driver.id },
       data: {
-        liveLocation: {
-          set: liveLocation
-        },
+        liveLocation: locationString,
         updatedAt: new Date()
       }
     });
@@ -348,11 +350,11 @@ export async function PATCH(request: Request) {
     return NextResponse.json({
       success: true,
       message: 'Live location updated successfully',
-      rider: {
-        id: updatedRider.id,
-        name: updatedRider.name,
-        phone: updatedRider.phone,
-        liveLocation: updatedRider.liveLocation
+      driver: {
+        id: updatedDriver.id,
+        name: updatedDriver.name,
+        phone: updatedDriver.phone,
+        liveLocation: updatedDriver.liveLocation
       }
     });
 

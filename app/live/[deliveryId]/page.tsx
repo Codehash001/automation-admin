@@ -32,18 +32,12 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
 
   const sendLocationToServer = async (latitude: number, longitude: number) => {
     try {
-      // Get the rider's phone number from the URL or session
-      const searchParams = new URLSearchParams(window.location.search);
-      const phone = searchParams.get('phone');
-      
-      if (!phone) {
-        throw new Error('Phone number is required for location updates');
-      }
 
       const response = await fetch('/api/deliveries', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_API_KEY}`
         },
         body: JSON.stringify({
           id: parseInt(params.deliveryId), // Include delivery ID in the request body
