@@ -430,7 +430,7 @@ export default function Map({
       .then(data => {
         const route = data.routes[0].geometry;
         
-        map.current.addSource('route', {
+        map.current?.addSource('route', {
           type: 'geojson',
           data: {
             type: 'Feature',
@@ -439,7 +439,7 @@ export default function Map({
           }
         });
 
-        map.current.addLayer({
+        map.current?.addLayer({
           id: 'route',
           type: 'line',
           source: 'route',
@@ -459,7 +459,7 @@ export default function Map({
           .extend([pickupLocation.lng, pickupLocation.lat])
           .extend([dropoffLocation.lng, dropoffLocation.lat]);
         
-        map.current.fitBounds(bounds, {
+        map.current?.fitBounds(bounds, {
           padding: 100,
           maxZoom: 15
         });
