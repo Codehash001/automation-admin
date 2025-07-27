@@ -129,7 +129,7 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
         throw new Error(data.error || 'Invalid OTP');
       }
 
-      if (data.deliveryId !== params.deliveryId) {
+      if (data.deliveryId != params.deliveryId) {
         throw new Error('Invalid delivery');
       }
 
