@@ -1,7 +1,7 @@
 // app/dashboard/deliveries/live/[deliveryId]/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +21,7 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
   const [showOtpForm, setShowOtpForm] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [location, setLocation] = useState<Location | null>(null);
-  const [watchId, setWatchId] = useState<number | null>(null);
+  const watchId = useRef<number | null>(null);
   const [isVerified, setIsVerified] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [error, setError] = useState('');
@@ -155,85 +155,165 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
     }
   };
 
-  const startSharingLocation = async () => {
-    if (!navigator.geolocation) {
-      setError('Geolocation is not supported by your browser');
-      return;
+  const handleLocationPermission = () => {
+    // This function will be called when the user clicks the button in the toast
+    if (navigator.permissions) {
+      // This will open the browser's permission settings
+      navigator.permissions.query({ name: 'geolocation' });
     }
+    // Force a new permission prompt
+    startSharingLocation();
+  };
 
-    setIsSharing(true);
-    setError('');
-
+  const startSharingLocation = async () => {
+    console.log('1. Start sharing location called');
     try {
-      // First, get the current position immediately
-      const initialPosition = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0
-        });
-      });
-      
-      const { latitude, longitude } = initialPosition.coords;
-      setLocation({ lat: latitude, lng: longitude });
-      
-      // Send initial location to server
-      await sendLocationToServer(latitude, longitude);
-      
-      // Start background location tracking using service worker
-      if (serviceWorkerRegistered && 'serviceWorker' in navigator) {
+      console.log('2. Checking geolocation support');
+      if (navigator.geolocation) {
+        console.log('3. Geolocation is supported');
+        
+        // First check if we already have permission
+        console.log('4. Checking permissions');
+        let permissionStatus;
         try {
-          const registration = await navigator.serviceWorker.ready;
-          if (registration.active) {
-            const channel = new MessageChannel();
-            
-            channel.port1.onmessage = (event) => {
-              if (event.data.status === 'TRACKING_STARTED') {
-                console.log('Background location tracking started');
-                // Set a non-null watchId to indicate tracking is active
-                // We use -1 to indicate service worker tracking
-                setWatchId(-1);
-              } else if (event.data.status === 'TRACKING_STOPPED') {
-                console.log('Background location tracking stopped');
-                setWatchId(null);
-              }
-            };
-            
-            // Pass the auth token to the service worker
-            registration.active.postMessage({
-              type: 'START_LOCATION_TRACKING',
-              deliveryId: parseInt(params.deliveryId),
-              authToken: process.env.NEXT_PUBLIC_API_KEY,
-              interval: 10000 // 10 seconds update interval
-            }, [channel.port2]);
+          // @ts-ignore - TypeScript doesn't know about the permission API yet
+          permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
+          console.log('5. Permission status:', permissionStatus.state);
+          
+          if (permissionStatus.state === 'denied') {
+            console.log('6. Permission was denied - showing instructions');
+            toast({
+              title: "Location Access Required",
+              description: (
+                <div className="flex flex-col gap-2">
+                  <p>Location access is required to share your live location.</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      // This will open the browser's permission settings
+                      if (navigator.permissions) {
+                        navigator.permissions.query({ name: 'geolocation' });
+                      }
+                      // Try again after a short delay
+                      setTimeout(startSharingLocation, 500);
+                    }}
+                  >
+                    Allow Location Access
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Click the lock icon in your browser's address bar to manage permissions.
+                  </p>
+                </div>
+              ),
+              variant: "destructive",
+              duration: 10000, // Show for 10 seconds
+            });
+            return;
           }
-        } catch (error) {
-          console.error('Error starting background tracking:', error);
-          toast({
-            title: "Warning",
-            description: "Background location tracking might not work. Location will only update while this page is open.",
-            variant: "destructive",
-          });
-          // Fallback to regular geolocation if service worker fails
-          startRegularGeolocationWatch();
+        } catch (permError) {
+          console.warn('Permission API error, continuing anyway:', permError);
         }
+
+        // Request location access
+        console.log('7. Requesting location access');
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              console.log('8. Got position:', pos);
+              resolve(pos);
+            },
+            (err) => {
+              console.error('8. Error getting position:', err);
+              if (err.code === err.PERMISSION_DENIED) {
+                toast({
+                  title: "Permission Required",
+                  description: (
+                    <div className="flex flex-col gap-2">
+                      <p>Please allow location access to continue.</p>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => window.location.reload()} // Refresh to trigger permission prompt again
+                      >
+                        Try Again
+                      </Button>
+                    </div>
+                  ),
+                  variant: "destructive"
+                });
+              }
+              reject(err);
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 0
+            }
+          );
+        });
+
+        // If we get here, we have permission
+        setLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+  
+        // Start watching position
+        const id = navigator.geolocation.watchPosition(
+          (position) => {
+            const { latitude, longitude } = position.coords;
+            setLocation({ lat: latitude, lng: longitude });
+            
+            // Send location to server
+            sendLocationToServer(latitude, longitude);
+          },
+          (error) => {
+            console.error('Error watching position:', error);
+            if (error.code === error.PERMISSION_DENIED) {
+              toast({
+                title: "Location Access Required",
+                description: "Please allow location access to share your live location.",
+                variant: "destructive"
+              });
+            }
+          },
+          { enableHighAccuracy: true }
+        );
+        
+        // Store the watch ID
+        watchId.current = id;
+
+        setIsSharing(true);
+        toast({
+          title: "Location Sharing Started",
+          description: "Your live location is now being shared.",
+        });
+  
       } else {
-        // Fallback to regular geolocation if service workers are not supported
-        startRegularGeolocationWatch();
+        toast({
+          title: "Geolocation not supported",
+          description: "Your browser doesn't support geolocation.",
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error('Error initializing location sharing:', error);
       toast({
         title: "Error",
-        description: "Failed to start location sharing. Please try again.",
-        variant: "destructive",
+        description: error instanceof Error ? error.message : "Failed to access location",
+        variant: "destructive"
       });
     }
-    toast({
-      title: "Success",
-      description: "Started sharing your live location",
-    });
   };
+
+  useEffect(() => {
+    return () => {
+      if (watchId.current !== null) {
+        navigator.geolocation.clearWatch(watchId.current);
+      }
+    };
+  }, []);
 
   // Helper function to start regular geolocation watch (fallback)
   const startRegularGeolocationWatch = () => {
@@ -258,37 +338,117 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
         timeout: 5000,      // Time to wait for a position (5 seconds)
       }
     );
-    setWatchId(id);
+    watchId.current = id;
   };
 
   const stopSharingLocation = async () => {
-    // Stop any active geolocation watch
-    if (watchId !== null && watchId !== -1) {
-      navigator.geolocation.clearWatch(watchId);
-    }
+    console.log('Stopping location sharing...');
     
-    // Stop service worker tracking if active
-    if ((watchId === -1 || serviceWorkerRegistered) && 'serviceWorker' in navigator) {
-      try {
-        const registration = await navigator.serviceWorker.ready;
-        if (registration.active) {
-          registration.active.postMessage({
-            type: 'STOP_LOCATION_TRACKING'
-          });
+    // Create a timeout to ensure we don't get stuck
+    const stopTimeout = setTimeout(() => {
+      console.warn('Stop operation taking too long, forcing cleanup');
+      forceCleanup();
+    }, 2000); // 2 second timeout
+
+    const forceCleanup = () => {
+      // Clear the geolocation watch if it exists
+      if (watchId.current !== null && watchId.current !== -1) {
+        console.log('Force clearing geolocation watch with ID:', watchId.current);
+        try {
+          navigator.geolocation.clearWatch(watchId.current);
+        } catch (e) {
+          console.error('Error force clearing watch:', e);
         }
-      } catch (error) {
-        console.error('Error stopping service worker tracking:', error);
       }
+      
+      // Reset state
+      watchId.current = null;
+      setLocation(null);
+      setIsSharing(false);
+    };
+    
+    try {
+      // Clear the geolocation watch if it exists
+      if (watchId.current !== null && watchId.current !== -1) {
+        console.log('Clearing geolocation watch with ID:', watchId.current);
+        navigator.geolocation.clearWatch(watchId.current);
+      } else {
+        console.log('No active geolocation watch to clear');
+      }
+      
+      // Stop service worker tracking if active - don't await this
+      if (watchId.current === -1 || serviceWorkerRegistered) {
+        console.log('Attempting to stop service worker tracking...');
+        
+        // Don't wait for this to complete
+        const stopServiceWorker = async () => {
+          try {
+            if ('serviceWorker' in navigator) {
+              const registration = await navigator.serviceWorker.ready;
+              if (registration.active) {
+                // Add a timeout for the service worker message
+                const messagePromise = new Promise((resolve) => {
+                  const messageChannel = new MessageChannel();
+                  messageChannel.port1.onmessage = (event) => {
+                    if (event.data === 'STOP_ACK') {
+                      console.log('Received STOP_ACK from service worker');
+                      messageChannel.port1.close();
+                      resolve(true);
+                    }
+                  };
+                  
+                  // Send the stop message
+                  registration.active?.postMessage(
+                    { type: 'STOP_TRACKING' },
+                    [messageChannel.port2]
+                  );
+                  
+                  // Set a timeout in case the service worker doesn't respond
+                  setTimeout(() => {
+                    console.warn('Service worker did not respond to STOP_TRACKING');
+                    messageChannel.port1.close();
+                    resolve(false);
+                  }, 1000);
+                });
+                
+                await messagePromise;
+              }
+            }
+          } catch (swError) {
+            console.error('Error in service worker cleanup:', swError);
+          }
+        };
+        
+        // Don't await the service worker cleanup
+        stopServiceWorker().finally(() => {
+          console.log('Service worker cleanup completed');
+        });
+      }
+      
+      // Reset state immediately without waiting for service worker
+      forceCleanup();
+      
+      console.log('Successfully stopped location sharing');
+      
+      toast({
+        title: "Location Sharing Stopped",
+        description: "Your live location is no longer being shared.",
+        duration: 3000,
+      });
+      
+    } catch (error) {
+      console.error('Error in stopSharingLocation:', error);
+      // Force cleanup even if there's an error
+      forceCleanup();
+      
+      toast({
+        title: "Location Sharing Stopped",
+        description: "Your live location sharing has been stopped.",
+        duration: 3000,
+      });
+    } finally {
+      clearTimeout(stopTimeout);
     }
-    
-    setWatchId(null);
-    setLocation(null);
-    setIsSharing(false);
-    
-    toast({
-      title: "Info",
-      description: "Stopped sharing your live location",
-    });
   };
 
   if (!isVerified && showOtpForm) {
@@ -350,8 +510,18 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
             
             <div className="flex space-x-4">
               <Button
-                onClick={startSharingLocation}
-                disabled={watchId !== null}
+                onClick={(e) => {
+                  console.log('Start Sharing button clicked');
+                  startSharingLocation().catch(error => {
+                    console.error('Error in startSharingLocation:', error);
+                    toast({
+                      title: "Error",
+                      description: error instanceof Error ? error.message : "Failed to start sharing location",
+                      variant: "destructive"
+                    });
+                  });
+                }}
+                disabled={watchId.current !== null}
                 className="flex-1"
                 variant="outline"
               >
@@ -359,7 +529,7 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
               </Button>
               <Button
                 onClick={stopSharingLocation}
-                disabled={watchId === null}
+                disabled={watchId.current === null}
                 className="flex-1"
                 variant="destructive"
               >
