@@ -18,10 +18,10 @@ export async function POST(req: Request) {
       );
     }
     
-    // Generate OTP and set expiration (10 minutes from now)
+    // Generate OTP and set expiration (120 minutes from now)
     const otp = generateOTP();
     const expiresAt = new Date();
-    expiresAt.setMinutes(expiresAt.getMinutes() + 10);
+    expiresAt.setMinutes(expiresAt.getMinutes() + 120);
     
     // Update the delivery record with the new OTP and expiration
     await prisma.delivery.update({
@@ -51,45 +51,83 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const { otp } = await req.json();
-    
+
     if (!otp) {
       return NextResponse.json(
         { success: false, error: 'OTP is required' },
         { status: 400 }
       );
     }
-    
-    // Find the delivery with the given OTP
+
+    // Find delivery with matching OTP that hasn't expired
     const delivery = await prisma.delivery.findFirst({
       where: {
         otp,
         otpExpiresAt: {
-          gte: new Date() // Only find non-expired OTPs
-        }
-      }
+          gt: new Date(), // OTP not expired
+        },
+      },
+      include: {
+        order: {
+          include: {
+            customer: true,
+            outlet: true,
+            emirates: true,
+          },
+        },
+        driver: true,
+      },
     });
-    
+
     if (!delivery) {
       return NextResponse.json(
         { success: false, error: 'Invalid or expired OTP' },
-        { status: 400 }
+        { status: 404 }
       );
     }
-    
-    // Clear the OTP after successful verification (one-time use)
-    await prisma.delivery.update({
-      where: { id: delivery.id },
-      data: {
-        otp: null,
-        otpExpiresAt: null
-      }
+
+    // // OTP is valid, clear it to prevent reuse
+    // await prisma.delivery.update({
+    //   where: { id: delivery.id },
+    //   data: {
+    //     otp: null,
+    //     otpExpiresAt: null,
+    //   },
+    // });
+
+    return NextResponse.json({
+      success: true,
+      message: 'OTP verified successfully',
+      deliveryId: delivery.id,
+      delivery: {
+        id: delivery.id,
+        status: delivery.status,
+        driver: delivery.driver ? {
+          id: delivery.driver.id,
+          name: delivery.driver.name,
+          phone: delivery.driver.phone,
+          liveLocation: delivery.driver.liveLocation,
+        } : null,
+        order: {
+          id: delivery.order.id,
+          status: delivery.order.status,
+          customer: {
+            id: delivery.order.customer.id,
+            name: delivery.order.customer.name,
+            phone: delivery.order.customer.whatsappNumber,
+          },
+          outlet: {
+            id: delivery.order.outlet?.id,
+            name: delivery.order.outlet?.name,
+            address: delivery.order.outlet?.exactLocation,
+          },
+          emirates: delivery.order.emirates,
+        },
+        createdAt: delivery.createdAt,
+        updatedAt: delivery.updatedAt,
+      },
     });
-    
-    return NextResponse.json({ 
-      success: true, 
-      deliveryId: delivery.id.toString(),
-      otp: otp // Include the OTP in the response
-    });
+
   } catch (error) {
     console.error('Error verifying OTP:', error);
     return NextResponse.json(

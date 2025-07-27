@@ -256,20 +256,39 @@ function startRiderNotificationLoop(
   notifyNextDriver();
 }
 
-// Get all deliveries
+// Get all deliveries or a specific delivery by ID
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const deliveryId = searchParams.get('id');
 
     if (deliveryId) {
-      // If specific delivery ID is requested, redirect to dynamic route
-      return NextResponse.json({
-        message: 'Use /api/deliveries/rider for rider responses'
-      }, { status: 301 });
+      // Find specific delivery by ID with related data
+      const delivery = await prisma.delivery.findUnique({
+        where: { id: Number(deliveryId) },
+        include: {
+          order: {
+            include: {
+              customer: true,
+              outlet: true,
+              emirates: true,
+            }
+          },
+          driver: true
+        }
+      });
+
+      if (!delivery) {
+        return NextResponse.json(
+          { error: 'Delivery not found' },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json(delivery);
     }
 
-    // Fetch all deliveries
+    // Fetch all deliveries if no ID provided
     const deliveries = await prisma.delivery.findMany({
       include: {
         order: {
@@ -280,6 +299,9 @@ export async function GET(request: Request) {
           }
         },
         driver: true
+      },
+      orderBy: {
+        createdAt: 'desc' // Show most recent deliveries first
       }
     });
     

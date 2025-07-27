@@ -190,19 +190,30 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
             channel.port1.onmessage = (event) => {
               if (event.data.status === 'TRACKING_STARTED') {
                 console.log('Background location tracking started');
+                // Set a non-null watchId to indicate tracking is active
+                // We use -1 to indicate service worker tracking
+                setWatchId(-1);
               } else if (event.data.status === 'TRACKING_STOPPED') {
                 console.log('Background location tracking stopped');
+                setWatchId(null);
               }
             };
             
+            // Pass the auth token to the service worker
             registration.active.postMessage({
               type: 'START_LOCATION_TRACKING',
               deliveryId: parseInt(params.deliveryId),
-              interval: 10000 // 10 seconds
+              authToken: process.env.NEXT_PUBLIC_API_KEY,
+              interval: 10000 // 10 seconds update interval
             }, [channel.port2]);
           }
-        } catch (swError) {
-          console.error('Service Worker Error:', swError);
+        } catch (error) {
+          console.error('Error starting background tracking:', error);
+          toast({
+            title: "Warning",
+            description: "Background location tracking might not work. Location will only update while this page is open.",
+            variant: "destructive",
+          });
           // Fallback to regular geolocation if service worker fails
           startRegularGeolocationWatch();
         }
@@ -252,13 +263,12 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
 
   const stopSharingLocation = async () => {
     // Stop any active geolocation watch
-    if (watchId !== null) {
+    if (watchId !== null && watchId !== -1) {
       navigator.geolocation.clearWatch(watchId);
-      setWatchId(null);
     }
     
     // Stop service worker tracking if active
-    if (serviceWorkerRegistered && 'serviceWorker' in navigator) {
+    if ((watchId === -1 || serviceWorkerRegistered) && 'serviceWorker' in navigator) {
       try {
         const registration = await navigator.serviceWorker.ready;
         if (registration.active) {
@@ -271,8 +281,10 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
       }
     }
     
+    setWatchId(null);
     setLocation(null);
     setIsSharing(false);
+    
     toast({
       title: "Info",
       description: "Stopped sharing your live location",
