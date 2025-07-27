@@ -86,14 +86,13 @@ export async function PUT(req: Request) {
       );
     }
 
-    // // OTP is valid, clear it to prevent reuse
-    // await prisma.delivery.update({
-    //   where: { id: delivery.id },
-    //   data: {
-    //     otp: null,
-    //     otpExpiresAt: null,
-    //   },
-    // });
+    // OTP is valid, clear it to prevent reuse
+    await prisma.delivery.update({
+      where: { id: delivery.id },
+      data: {
+        status: 'IN_TRANSIT',
+      },
+    });
 
     return NextResponse.json({
       success: true,
@@ -115,6 +114,8 @@ export async function PUT(req: Request) {
             id: delivery.order.customer.id,
             name: delivery.order.customer.name,
             phone: delivery.order.customer.whatsappNumber,
+            location: delivery.order.deliveryLocation,
+            address: delivery.order.deliveryAddress,
           },
           outlet: {
             id: delivery.order.outlet?.id,
