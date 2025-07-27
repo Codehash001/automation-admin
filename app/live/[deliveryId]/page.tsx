@@ -26,9 +26,7 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
   const [isSharing, setIsSharing] = useState(false);
   const [error, setError] = useState('');
   const [serviceWorkerRegistered, setServiceWorkerRegistered] = useState(false);
-  
-
-  
+  const [isLocationPermissionGranted, setIsLocationPermissionGranted] = useState(false);
 
   const sendLocationToServer = async (latitude: number, longitude: number) => {
     try {
@@ -139,9 +137,6 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
         title: "Success",
         description: "OTP verified successfully",
       });
-      
-      // Start sharing location immediately after successful verification
-      startSharingLocation();
     } catch (error) {
       console.error('Error verifying OTP:', error);
       toast({
@@ -166,180 +161,152 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
   };
 
   const startSharingLocation = async () => {
-    console.log('1. Start sharing location called');
+    console.log('Start sharing location called');
+    
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser');
+      return;
+    }
+
+    setIsSharing(true);
+    
     try {
-      console.log('2. Checking geolocation support');
-      if (navigator.geolocation) {
-        console.log('3. Geolocation is supported');
-        
-        // First check if we already have permission
-        console.log('4. Checking permissions');
-        let permissionStatus;
-        try {
-          // @ts-ignore - TypeScript doesn't know about the permission API yet
-          permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
-          console.log('5. Permission status:', permissionStatus.state);
-          
-          if (permissionStatus.state === 'denied') {
-            console.log('6. Permission was denied - showing instructions');
-            toast({
-              title: "Location Access Required",
-              description: (
-                <div className="flex flex-col gap-2">
-                  <p>Location access is required to share your live location.</p>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => {
-                      // This will open the browser's permission settings
-                      if (navigator.permissions) {
-                        navigator.permissions.query({ name: 'geolocation' });
-                      }
-                      // Try again after a short delay
-                      setTimeout(startSharingLocation, 500);
-                    }}
-                  >
-                    Allow Location Access
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    Click the lock icon in your browser's address bar to manage permissions.
-                  </p>
-                </div>
-              ),
-              variant: "destructive",
-              duration: 10000, // Show for 10 seconds
-            });
-            return;
-          }
-        } catch (permError) {
-          console.warn('Permission API error, continuing anyway:', permError);
-        }
-
-        // Request location access
-        console.log('7. Requesting location access');
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              console.log('8. Got position:', pos);
-              resolve(pos);
-            },
-            (err) => {
-              console.error('8. Error getting position:', err);
-              if (err.code === err.PERMISSION_DENIED) {
-                toast({
-                  title: "Permission Required",
-                  description: (
-                    <div className="flex flex-col gap-2">
-                      <p>Please allow location access to continue.</p>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => window.location.reload()} // Refresh to trigger permission prompt again
-                      >
-                        Try Again
-                      </Button>
-                    </div>
-                  ),
-                  variant: "destructive"
-                });
-              }
-              reject(err);
-            },
-            {
-              enableHighAccuracy: true,
-              timeout: 10000,
-              maximumAge: 0
-            }
-          );
+      // First try to get high accuracy position to trigger permission prompt if needed
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
         });
-
-        // If we get here, we have permission
-        setLocation({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
-        });
-  
-        // Start watching position
-        const id = navigator.geolocation.watchPosition(
-          (position) => {
-            const { latitude, longitude } = position.coords;
-            setLocation({ lat: latitude, lng: longitude });
-            
-            // Send location to server
-            sendLocationToServer(latitude, longitude);
-          },
-          (error) => {
-            console.error('Error watching position:', error);
-            if (error.code === error.PERMISSION_DENIED) {
-              toast({
-                title: "Location Access Required",
-                description: "Please allow location access to share your live location.",
-                variant: "destructive"
-              });
-            }
-          },
-          { enableHighAccuracy: true }
-        );
-        
-        // Store the watch ID
-        watchId.current = id;
-
-        setIsSharing(true);
-        toast({
-          title: "Location Sharing Started",
-          description: "Your live location is now being shared.",
-        });
-  
-      } else {
-        toast({
-          title: "Geolocation not supported",
-          description: "Your browser doesn't support geolocation.",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      console.error('Error initializing location sharing:', error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to access location",
-        variant: "destructive"
       });
+      
+      // If we get here, permission was granted
+      setIsLocationPermissionGranted(true);
+      setLocation({
+        lat: position.coords.latitude,
+        lng: position.coords.longitude
+      });
+
+      // Start watching position
+      watchId.current = navigator.geolocation.watchPosition(
+        async (position) => {
+          const newLocation = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          };
+          setLocation(newLocation);
+          
+          // Send to server
+          try {
+            await sendLocationToServer(newLocation.lat, newLocation.lng);
+          } catch (error) {
+            console.error('Error sending location to server:', error);
+          }
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          setError(`Error getting location: ${error.message}`);
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 10000
+        }
+      );
+
+      // Start background tracking if service worker is registered
+      if ('serviceWorker' in navigator && serviceWorkerRegistered) {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          await registration.active?.postMessage({
+            type: 'START_LOCATION_TRACKING',
+            deliveryId: parseInt(params.deliveryId),
+            interval: 10000, // 10 seconds
+            authToken: process.env.NEXT_PUBLIC_API_KEY
+          });
+          console.log('Background location tracking started');
+        } catch (error) {
+          console.error('Error starting background tracking:', error);
+        }
+      }
+      
+      toast({
+        title: "Location Sharing Started",
+        description: "Your location is now being shared with the customer.",
+      });
+      
+    } catch (error) {
+      console.error('Error getting location:', error);
+      setError('Could not get your location. Please make sure location services are enabled.');
+      
+      // Show instructions for enabling location
+      toast({
+        title: "Location Access Required",
+        description: "Please enable location access to share your live location.",
+        variant: "destructive",
+        action: (
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handleLocationPermission}
+          >
+            Enable Location
+          </Button>
+        )
+      });
+      
+      setIsSharing(false);
     }
   };
 
+  // Check and request location permission on component mount
   useEffect(() => {
-    return () => {
-      if (watchId.current !== null) {
-        navigator.geolocation.clearWatch(watchId.current);
+    const checkLocationPermission = async () => {
+      if (!navigator.permissions) return;
+      
+      try {
+        // @ts-ignore - TypeScript doesn't know about the permission API yet
+        const permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
+        setIsLocationPermissionGranted(permissionStatus.state === 'granted');
+        
+        // Listen for permission changes
+        permissionStatus.onchange = () => {
+          const currentState = permissionStatus.state;
+          setIsLocationPermissionGranted(currentState === 'granted');
+          
+          if (currentState === 'granted' && isVerified) {
+            startSharingLocation();
+          } else if (currentState === 'denied') {
+            toast({
+              title: "Location Permission Required",
+              description: "Please enable location access in your browser settings to share your live location.",
+              variant: "destructive",
+              action: (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => window.open('app-settings:location', '_blank')}
+                >
+                  Open Settings
+                </Button>
+              )
+            });
+          }
+        };
+      } catch (error) {
+        console.error('Error checking location permission:', error);
       }
     };
-  }, []);
+    
+    checkLocationPermission();
+  }, [isVerified]);
 
-  // Helper function to start regular geolocation watch (fallback)
-  const startRegularGeolocationWatch = () => {
-    console.log('Starting regular geolocation watch as fallback');
-    const id = navigator.geolocation.watchPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        setLocation({ lat: latitude, lng: longitude });
-        await sendLocationToServer(latitude, longitude);
-      },
-      (error) => {
-        console.error('Geolocation error:', error);
-        toast({
-          title: "Location Error",
-          description: "Unable to get your location. Please ensure location services are enabled.",
-          variant: "destructive",
-        });
-      },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 10000,  // Accept a position whose age is no more than 10 seconds
-        timeout: 5000,      // Time to wait for a position (5 seconds)
-      }
-    );
-    watchId.current = id;
-  };
+  // Start location sharing when verified and permission is granted
+  useEffect(() => {
+    if (isVerified && isLocationPermissionGranted) {
+      startSharingLocation();
+    }
+  }, [isVerified, isLocationPermissionGranted]);
 
   const stopSharingLocation = async () => {
     console.log('Stopping location sharing...');
@@ -449,6 +416,40 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
     } finally {
       clearTimeout(stopTimeout);
     }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (watchId.current !== null) {
+        navigator.geolocation.clearWatch(watchId.current);
+      }
+    };
+  }, []);
+
+  // Helper function to start regular geolocation watch (fallback)
+  const startRegularGeolocationWatch = () => {
+    console.log('Starting regular geolocation watch as fallback');
+    const id = navigator.geolocation.watchPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        setLocation({ lat: latitude, lng: longitude });
+        await sendLocationToServer(latitude, longitude);
+      },
+      (error) => {
+        console.error('Geolocation error:', error);
+        toast({
+          title: "Location Error",
+          description: "Unable to get your location. Please ensure location services are enabled.",
+          variant: "destructive",
+        });
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 10000,  // Accept a position whose age is no more than 10 seconds
+        timeout: 5000,      // Time to wait for a position (5 seconds)
+      }
+    );
+    watchId.current = id;
   };
 
   if (!isVerified && showOtpForm) {
