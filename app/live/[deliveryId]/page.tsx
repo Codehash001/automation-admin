@@ -954,21 +954,27 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
             {!pickedUp && (
               <button
                 onClick={handlePickedUp}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium mt-3"
+                disabled={isLoading}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium mt-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Confirm as Picked Up
+                {isLoading ? (
+                  <span className="flex items-center justify-center">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Updating...
+                  </span>
+                ) : (
+                  'Confirm as Picked Up'
+                )}
               </button>
             )}
             
             {isOrderPickedUp && (
               <button
                 onClick={handleWhatsAppConfirmation}
-                className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium mt-3"
+                className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium mt-3 flex items-center justify-center"
               >
-                <span className="flex items-center justify-center">
-                  <MessageCircle className="mr-2 h-4 w-4 text-white" />
-                  Confirm Delivery in WhatsApp
-                </span>
+                <MessageCircle className="mr-2 h-4 w-4 text-white" />
+                Confirm Delivery in WhatsApp
               </button>
             )}
           </div>
@@ -1079,22 +1085,37 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
     </div>
   );
 
+  // Add these functions with other helper functions, before the return statement
+  const handlePickedUp = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      await updateDeliveryStatus('IN_TRANSIT');
+      setPickedUp(true);
+      setIsOrderPickedUp(true);
+    } catch (error) {
+      console.error('Error updating delivery status:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update delivery status. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [updateDeliveryStatus]);
+  
+  const handleWhatsAppConfirmation = useCallback(() => {
+    const phoneNumber = '+971569719345';
+    const message = `Delivery Confirmation: Order #${deliveryDetails?.order?.id || ''} has been delivered.`;
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
+    window.open(whatsappUrl, '_blank');
+  }, [deliveryDetails]);
+
   // Main render
   if (!isVerified || !deliveryDetails) {
     return renderOtpForm();
   }
-
-  const handlePickedUp = useCallback(() => {
-    setPickedUp(true);
-    setIsOrderPickedUp(true);
-    updateDeliveryStatus('IN_TRANSIT');
-  }, [setPickedUp, updateDeliveryStatus]);
-  
-  const handleWhatsAppConfirmation = useCallback(() => {
-    const phoneNumber = '+971569719345';
-    const whatsappUrl = `https://wa.me/${phoneNumber}`;
-    window.open(whatsappUrl, '_blank');
-  }, [deliveryDetails]);
 
   return (
     <div className="flex flex-col h-screen bg-gray-100 overflow-hidden">
