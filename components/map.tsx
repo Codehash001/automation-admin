@@ -11,10 +11,11 @@ interface MapProps {
   currentLocation: { lat: number; lng: number } | null;
   pickupLocation: { lat: number; lng: number; address?: string } | null;
   dropoffLocation: { lat: number; lng: number; address?: string } | null;
-  route: Array<[number, number]>;
-  onRouteUpdate?: (route: Array<[number, number]>, distance: number, duration: number) => void;
+  route?: Array<[number, number]>;
+  onRouteUpdate?: (route: { coordinates: Array<[number, number]>; distance: number; duration: number }) => void;
   showPickupRoute?: boolean;
   showDropoffRoute?: boolean;
+  onDistanceUpdate?: (distance: number, duration: number, type: 'pickup' | 'dropoff') => void;
 }
 
 const mapContainerStyles: React.CSSProperties = {
@@ -34,16 +35,25 @@ const globalStyles = `
     margin: 0;
     padding: 0;
     overflow: hidden;
+    touch-action: none; /* Prevent pull-to-refresh and overscroll effects */
   }
   
   /* Prevent double-tap zoom on mobile */
   * {
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
+    -webkit-text-size-adjust: 100%; /* Prevent font scaling in landscape */
   }
   
   *:focus {
     outline: none !important;
+  }
+  
+  /* Fix for mobile viewport units */
+  @supports (-webkit-touch-callout: none) {
+    .h-screen {
+      height: -webkit-fill-available;
+    }
   }
 `;
 
@@ -54,7 +64,8 @@ export default function Map({
   route,
   onRouteUpdate,
   showPickupRoute = true,
-  showDropoffRoute = true 
+  showDropoffRoute = true,
+  onDistanceUpdate
 }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -62,6 +73,10 @@ export default function Map({
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [viewportHeight, setViewportHeight] = useState('100vh');
   const resizeTimeout = useRef<NodeJS.Timeout>();
+
+  // Track if the user has manually zoomed
+  const userZoomed = useRef(false);
+  const currentZoom = useRef(14); // Default zoom level
 
   useEffect(() => {
     const setHeight = () => {
@@ -109,28 +124,23 @@ export default function Map({
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v11',
-      center: [55.296249, 25.276987], // Default to Dubai coordinates
-      zoom: 12,
+      center: [55.296249, 25.276987], // Default to Dubai
+      zoom: 14, // Default zoom level
+      minZoom: 10, // Prevent zooming out too far
+      maxZoom: 20, // Allow close zooming
       touchPitch: false, 
-      touchZoomRotate: false, 
+      touchZoomRotate: true, // Allow zoom and rotate on touch devices
       dragRotate: false, 
-      renderWorldCopies: false, 
+      renderWorldCopies: true, // Show multiple copies of the world at low zoom levels
       interactive: true,
       attributionControl: false, 
       preserveDrawingBuffer: true, 
-      antialias: false, 
+      antialias: true, // Enable antialiasing for better rendering
       trackResize: true,
-      maxZoom: 18,
-      minZoom: 10,
     });
 
     map.current.dragRotate.disable();
     map.current.touchZoomRotate.disableRotation();
-
-    map.current.setMaxBounds([
-      [54, 24], // Southwest coordinates of UAE
-      [56.5, 26.5], // Northeast coordinates of UAE
-    ]);
 
     map.current.on('load', () => {
       setIsMapLoaded(true);
@@ -279,171 +289,196 @@ export default function Map({
     }
   };
 
-  const updateRoute = useCallback(() => {
-    if (!map.current || !route || route.length === 0) return;
-    
-    const shouldShowRoute = (showPickupRoute || showDropoffRoute) && route.length > 0;
-    
-    if (shouldShowRoute) {
-      if (map.current.getSource('route')) {
-        (map.current.getSource('route') as mapboxgl.GeoJSONSource).setData({
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates: route,
-          },
-        });
-      } else {
-        map.current.addSource('route', {
-          type: 'geojson',
-          data: {
+  // Function to update the route between two points
+  const updateRoute = useCallback(async (start: [number, number], end: [number, number], type: 'pickup' | 'dropoff') => {
+    if (!map.current || !start || !end) return null;
+
+    try {
+      const startCoords = `${start[0]},${start[1]}`;
+      const endCoords = `${end[0]},${end[1]}`;
+      
+      const response = await fetch(
+        `https://api.mapbox.com/directions/v5/mapbox/driving/${startCoords};${endCoords}?` +
+        `geometries=geojson&access_token=${mapboxgl.accessToken}&overview=full`
+      );
+
+      const data = await response.json();
+      
+      if (data.routes && data.routes[0]) {
+        const route = data.routes[0];
+        const distance = route.distance; // in meters
+        const duration = route.duration; // in seconds
+        const coordinates = route.geometry.coordinates;
+        const routeId = `route-${type}`;
+        
+        // Update the route line
+        if (map.current.getSource(routeId)) {
+          (map.current.getSource(routeId) as mapboxgl.GeoJSONSource).setData({
             type: 'Feature',
             properties: {},
             geometry: {
               type: 'LineString',
-              coordinates: route,
-            },
-          },
-        });
+              coordinates: coordinates
+            }
+          });
+        } else {
+          map.current.addSource(routeId, {
+            type: 'geojson',
+            data: {
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'LineString',
+                coordinates: coordinates
+              }
+            }
+          });
 
-        if (!map.current.getLayer('route')) {
           map.current.addLayer({
-            id: 'route',
+            id: routeId,
             type: 'line',
-            source: 'route',
+            source: routeId,
             layout: {
               'line-join': 'round',
-              'line-cap': 'round',
+              'line-cap': 'round'
             },
             paint: {
-              'line-color': '#000000', 
+              'line-color': type === 'pickup' ? '#3b82f6' : '#000000',
               'line-width': 4,
-              'line-opacity': 0.9,
-            },
+              'line-opacity': 0.8
+            }
           });
         }
-      }
 
-      if (route.length > 0) {
-        const bounds = new mapboxgl.LngLatBounds();
-        
-        if (currentLocation) {
-          bounds.extend([currentLocation.lng, currentLocation.lat]);
-        }
-        
-        if (showPickupRoute && pickupLocation) {
-          bounds.extend([pickupLocation.lng, pickupLocation.lat]);
-        }
-        
-        if (showDropoffRoute && dropoffLocation) {
-          bounds.extend([dropoffLocation.lng, dropoffLocation.lat]);
-        }
-        
-        if (!bounds.isEmpty()) {
-          map.current.fitBounds(bounds, {
-            padding: { top: 100, bottom: 100, left: 100, right: 100 },
-            maxZoom: 15,
-            duration: 1000
+        // Call the onRouteUpdate callback if provided
+        if (onRouteUpdate) {
+          onRouteUpdate({
+            coordinates,
+            distance,
+            duration
           });
         }
+
+        // Call the onDistanceUpdate callback if provided
+        if (onDistanceUpdate) {
+          onDistanceUpdate(distance, duration, type);
+        }
+
+        // Return the bounds for this route
+        const bounds = coordinates.reduce((bounds: any, coord: [number, number]) => {
+          return bounds.extend(coord);
+        }, new mapboxgl.LngLatBounds(coordinates[0], coordinates[0]));
+
+        return bounds;
       }
-    } else {
-      if (map.current.getLayer('route')) {
-        map.current.removeLayer('route');
-      }
-      if (map.current.getSource('route')) {
-        map.current.removeSource('route');
-      }
+    } catch (error) {
+      console.error(`Error updating ${type} route:`, error);
     }
-  }, [route, showPickupRoute, showDropoffRoute, currentLocation, pickupLocation, dropoffLocation]);
+    return null;
+  }, [onRouteUpdate, onDistanceUpdate]);
 
+  // Update route when current location or target location changes
   useEffect(() => {
-    if (map.current?.isStyleLoaded()) {
-      updateRoute();
-    }
-  }, [updateRoute]);
+    if (!isMapLoaded || !currentLocation) return;
+
+    const updateRoutes = async () => {
+      if (!map.current) return;
+      
+      // Get current zoom level if user has manually zoomed
+      if (map.current.getZoom) {
+        currentZoom.current = map.current.getZoom();
+      }
+      
+      const bounds: mapboxgl.LngLatBounds[] = [];
+      
+      // Update pickup route if needed
+      if (showPickupRoute && pickupLocation) {
+        const pickupBounds = await updateRoute(
+          [currentLocation.lng, currentLocation.lat],
+          [pickupLocation.lng, pickupLocation.lat],
+          'pickup'
+        );
+        if (pickupBounds) bounds.push(pickupBounds);
+      } else if (map.current?.getSource('route-pickup')) {
+        if (map.current.getLayer('route-pickup')) map.current.removeLayer('route-pickup');
+        if (map.current.getSource('route-pickup')) map.current.removeSource('route-pickup');
+      }
+      
+      // Update dropoff route if needed
+      if (showDropoffRoute && dropoffLocation) {
+        const dropoffBounds = await updateRoute(
+          [currentLocation.lng, currentLocation.lat],
+          [dropoffLocation.lng, dropoffLocation.lat],
+          'dropoff'
+        );
+        if (dropoffBounds) bounds.push(dropoffBounds);
+      } else if (map.current?.getSource('route-dropoff')) {
+        if (map.current.getLayer('route-dropoff')) map.current.removeLayer('route-dropoff');
+        if (map.current.getSource('route-dropoff')) map.current.removeSource('route-dropoff');
+      }
+
+      // Fit map to show all routes and points of interest
+      if (bounds.length > 0 && map.current) {
+        const combinedBounds = bounds.reduce((combined, bound) => {
+          return combined.extend(bound);
+        }, new mapboxgl.LngLatBounds(bounds[0].getNorthWest(), bounds[0].getSouthEast()));
+
+        // Only adjust view if user hasn't manually zoomed
+        if (!userZoomed.current) {
+          map.current.fitBounds(combinedBounds, {
+            padding: { top: 100, bottom: 200, left: 50, right: 50 },
+            maxZoom: 15,
+            duration: 500 // Faster animation
+          });
+        } else {
+          // If user has zoomed, just center the map on the route without changing zoom
+          map.current.easeTo({
+            center: combinedBounds.getCenter(),
+            duration: 500,
+            essential: true
+          });
+        }
+      }
+    };
+
+    updateRoutes();
+    
+    // Update route every 10 seconds or when location changes significantly
+    const interval = setInterval(updateRoutes, 10000);
+    return () => clearInterval(interval);
+  }, [currentLocation, pickupLocation, dropoffLocation, isMapLoaded, showPickupRoute, showDropoffRoute, updateRoute]);
+
+  // Track user zoom interactions
+  useEffect(() => {
+    if (!map.current) return;
+
+    const onZoom = () => {
+      if (map.current) {
+        userZoomed.current = true;
+        currentZoom.current = map.current.getZoom();
+      }
+    };
+
+    map.current.on('zoomstart', onZoom);
+    map.current.on('zoom', onZoom);
+
+    return () => {
+      if (map.current) {
+        map.current.off('zoomstart', onZoom);
+        map.current.off('zoom', onZoom);
+      }
+    };
+  }, [isMapLoaded]);
+
+  // Reset zoom tracking when changing between pickup and dropoff
+  useEffect(() => {
+    userZoomed.current = false;
+  }, [showPickupRoute, showDropoffRoute]);
 
   useEffect(() => {
     if (!map.current) return;
     updateMarkers();
   }, [currentLocation, pickupLocation, dropoffLocation]);
-
-  useEffect(() => {
-    if (!map.current) return;
-    
-    const updateRoute = async () => {
-      if (currentLocation && (pickupLocation || dropoffLocation)) {
-        const destination = dropoffLocation || pickupLocation;
-        if (destination) {
-          const start: [number, number] = [currentLocation.lng, currentLocation.lat];
-          const end: [number, number] = [destination.lng, destination.lat];
-          const response = await fetch(
-            `https://api.mapbox.com/directions/v5/mapbox/driving/${start[0]},${start[1]};${end[0]},${end[1]}?` + 
-            `geometries=geojson&access_token=${mapboxgl.accessToken}`
-          );
-          const data = await response.json();
-          if (data.routes && data.routes[0]) {
-            const routeCoords = data.routes[0].geometry.coordinates;
-            const distance = data.routes[0].distance; 
-            const duration = data.routes[0].duration; 
-            const formattedRoute = routeCoords.map((coord: number[]) => [coord[0], coord[1]] as [number, number]);
-            if (onRouteUpdate) {
-              onRouteUpdate(formattedRoute, distance, duration);
-            }
-          }
-        }
-      }
-    };
-    
-    updateRoute();
-  }, [currentLocation, pickupLocation, dropoffLocation, onRouteUpdate]);
-
-  useEffect(() => {
-    if (!map.current || !pickupLocation || !dropoffLocation) return;
-
-    const bounds = new mapboxgl.LngLatBounds()
-      .extend([pickupLocation.lng, pickupLocation.lat])
-      .extend([dropoffLocation.lng, dropoffLocation.lat]);
-    
-    const padding = {
-      top: 50,
-      bottom: 100, 
-      left: 50,
-      right: 50,
-    };
-
-    map.current.fitBounds(bounds, {
-      padding,
-      maxZoom: 15,
-      duration: 1000, 
-    });
-  }, [pickupLocation, dropoffLocation]);
-
-  useEffect(() => {
-    if (!isMapLoaded || !pickupLocation || !dropoffLocation) return;
-    
-    const timer = setTimeout(() => {
-      const bounds = new mapboxgl.LngLatBounds()
-        .extend([pickupLocation.lng, pickupLocation.lat])
-        .extend([dropoffLocation.lng, dropoffLocation.lat]);
-      
-      const padding = {
-        top: 50,
-        bottom: 100, 
-        left: 50,
-        right: 50,
-      };
-
-      map.current?.fitBounds(bounds, {
-        padding,
-        maxZoom: 15,
-        duration: 1000, 
-      });
-    }, 100);
-    
-    return () => clearTimeout(timer);
-  }, [isMapLoaded, pickupLocation, dropoffLocation]);
 
   return (
     <div 

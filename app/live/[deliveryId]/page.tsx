@@ -75,8 +75,8 @@ interface CompleteDeliveryDetails {
 
 interface RouteInfo {
   coordinates: Array<[number, number]>;
-  distance: number | null;
-  duration: number | null;
+  distance: number;
+  duration: number;
 }
 
 export default function LiveLocationSharing({ params }: { params: { deliveryId: string } }) {
@@ -94,12 +94,12 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
   const [dropoffLocation, setDropoffLocation] = useState<Location | null>(null);
   
   // Route state
-  const [routeInfo, setRouteInfo] = useState<RouteInfo>({
-    coordinates: [],
-    distance: null,
-    duration: null
-  });
+  const [routeInfo, setRouteInfo] = useState<RouteInfo>({ coordinates: [], distance: 0, duration: 0 });
   
+  // State for pickup and dropoff info
+  const [pickupInfo, setPickupInfo] = useState({ distance: 0, duration: 0 });
+  const [dropoffInfo, setDropoffInfo] = useState({ distance: 0, duration: 0 });
+
   const [activeTab, setActiveTab] = useState<'map' | 'details'>('map');
   const [isNavigating, setIsNavigating] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
@@ -152,6 +152,21 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
     
     // Fallback for any other case
     return fallback;
+  };
+
+  // Format distance in kilometers or meters
+  const formatDistance = (meters: number) => {
+    if (meters < 1000) return `${Math.round(meters)} m`;
+    return `${(meters / 1000).toFixed(1)} km`;
+  };
+
+  // Format duration in minutes or hours
+  const formatDuration = (seconds: number) => {
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return `${hours}h ${remainingMinutes}m`;
   };
 
   // Update the useEffect for localStorage
@@ -298,31 +313,19 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
     }
   }, [params.deliveryId]);
 
-  // Format distance for display
-  const formatDistance = (meters: number | null): string => {
-    if (meters === null) return 'Calculating...';
-    if (meters < 1000) return `${Math.round(meters)}m`;
-    return `${(meters / 1000).toFixed(1)}km`;
-  };
-
-  // Format duration for display
-  const formatDuration = (seconds: number | null): string => {
-    if (seconds === null) return 'Calculating...';
-    const minutes = Math.round(seconds / 60);
-    if (minutes < 60) return `${minutes} min`;
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    return `${hours}h ${remainingMinutes}m`;
-  };
-
   // Handle route updates from the Map component
-  const handleRouteUpdate = useCallback((newRoute: Array<[number, number]>, distance: number, duration: number) => {
-    setRouteInfo({
-      coordinates: newRoute,
-      distance,
-      duration
-    });
+  const handleRouteUpdate = useCallback((newRoute: { coordinates: Array<[number, number]>; distance: number; duration: number }) => {
+    setRouteInfo(newRoute);
   }, []);
+
+  // Handle distance/duration updates
+  const handleDistanceUpdate = (distance: number, duration: number, type: 'pickup' | 'dropoff') => {
+    if (type === 'pickup') {
+      setPickupInfo({ distance, duration });
+    } else {
+      setDropoffInfo({ distance, duration });
+    }
+  };
 
   // Calculate route between points
   const calculateRoute = useCallback(async (origin: Location, destination: Location) => {
@@ -843,10 +846,6 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
 
   // Render the map view
   const renderMapView = () => {
-    console.log('Rendering map view with deliveryDetails:', deliveryDetails);
-    console.log('Pickup location:', pickupLocation);
-    console.log('Dropoff location:', dropoffLocation);
-    
     if (!deliveryDetails || !pickupLocation) {
       return (
         <div className="flex items-center justify-center h-full">
@@ -859,78 +858,75 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
       );
     }
     
+    const currentInfo = pickedUp ? dropoffInfo : pickupInfo;
+    const destinationName = pickedUp 
+      ? deliveryDetails?.order?.customer?.name || 'Customer'
+      : deliveryDetails?.order?.outlet?.name || 'Pickup location';
+
     return (
-      <div className="h-full w-full relative">
-        <div className="absolute top-4 right-4 z-10 flex flex-col space-y-2">
-          {!pickedUp ? (
-            <button
-              onClick={() => setPickedUp(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-md font-medium"
-            >
-              Picked Up
-            </button>
-          ) : (
-            <button
-              onClick={() => setShowRoute(true)}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow-md font-medium"
-            >
-              Show Dropoff Route
-            </button>
-          )}
-        </div>
-        
-        <MapWithNoSSR
-          currentLocation={currentLocation}
-          pickupLocation={pickedUp ? null : pickupLocation}
-          dropoffLocation={pickedUp ? dropoffLocation : null}
-          route={routeInfo.coordinates}
-          onRouteUpdate={handleRouteUpdate}
-          showPickupRoute={!pickedUp || showRoute}
-          showDropoffRoute={pickedUp && showRoute}
-        />
-        
-        {/* Delivery info overlay */}
-        <div className="absolute bottom-4 left-4 right-4 bg-white rounded-lg shadow-lg p-4 max-w-md mx-auto">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="font-medium">Delivery to {deliveryDetails?.order?.customer?.name || 'Customer'}</h3>
-            <span className={`text-sm px-2 py-1 rounded-full ${
-              deliveryDetails?.status === 'DELIVERED' ? 'bg-green-100 text-green-800' :
-              deliveryDetails?.status === 'IN_TRANSIT' ? 'bg-blue-100 text-blue-800' :
-              'bg-yellow-100 text-yellow-800'
-            }`}>
-              {deliveryDetails?.status?.replace('_', ' ') || 'PENDING'}
-            </span>
-          </div>
-          
-          <div className="space-y-2">
-            <div className="flex items-start">
-              <div className="flex-shrink-0 mt-1">
-                <div className={`h-2 w-2 rounded-full ${pickedUp ? 'bg-green-500' : 'bg-blue-500'}`}></div>
+      <div className="h-full w-full relative flex flex-col">
+        {/* Top Delivery Info Card */}
+        <div className="bg-white shadow-md rounded-b-lg mx-4 mt-2 z-10">
+          <div className="p-4">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <div className="flex items-center space-x-2">
+                  <div className={`h-2 w-2 rounded-full ${pickedUp ? 'bg-green-500' : 'bg-blue-500'}`}></div>
+                  <h3 className="font-medium text-gray-900">
+                    {pickedUp ? 'Delivering to' : 'Picking up from'} <span className="font-semibold">{destinationName}</span>
+                  </h3>
+                </div>
+                
+                {/* Distance and ETA */}
+                <div className="mt-2 flex items-center space-x-4 text-sm">
+                  <div className="flex items-center">
+                    <svg className="h-4 w-4 text-gray-500 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span>{formatDistance(currentInfo.distance)}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <svg className="h-4 w-4 text-gray-500 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>{formatDuration(currentInfo.duration)}</span>
+                  </div>
+                </div>
               </div>
-              <div className="ml-2">
-              <p className="text-sm font-medium">
-                {pickedUp ? 'Dropoff' : 'Pickup'}: {pickedUp 
-                  ? deliveryDetails?.order?.deliveryAddress || 'Customer location' 
-                  : typeof deliveryDetails?.order?.outlet?.exactLocation === 'string' 
-                    ? deliveryDetails?.order?.outlet?.exactLocation 
-                    : deliveryDetails?.order?.outlet?.name || 'Pickup location'}
-              </p>
-              </div>
+              
+              <span className={`text-xs px-2 py-1 rounded-full ${
+                deliveryDetails?.status === 'DELIVERED' ? 'bg-green-100 text-green-800' :
+                deliveryDetails?.status === 'IN_TRANSIT' ? 'bg-blue-100 text-blue-800' :
+                'bg-yellow-100 text-yellow-800'}
+              `}>
+                {deliveryDetails?.status?.replace('_', ' ') || 'PENDING'}
+              </span>
             </div>
             
-            {routeInfo.distance && routeInfo.duration && (
-              <div className="flex justify-between text-sm mt-2 pt-2 border-t">
-                <div className="flex items-center">
-                  <Clock className="h-4 w-4 mr-1 text-gray-500" />
-                  <span>{formatDuration(routeInfo.duration)}</span>
-                </div>
-                <div className="flex items-center">
-                  <MapPin className="h-4 w-4 mr-1 text-gray-500" />
-                  <span>{formatDistance(routeInfo.distance)}</span>
-                </div>
-              </div>
+            {!pickedUp && (
+              <button
+                onClick={() => setPickedUp(true)}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium mt-3"
+              >
+                Confirm Pickup
+              </button>
             )}
           </div>
+        </div>
+        
+        {/* Map Container */}
+        <div className="flex-1 relative">
+          <MapWithNoSSR
+            currentLocation={currentLocation}
+            pickupLocation={!pickedUp ? pickupLocation : null}
+            dropoffLocation={pickedUp ? dropoffLocation : null}
+            route={routeInfo.coordinates}
+            onRouteUpdate={handleRouteUpdate}
+            onDistanceUpdate={handleDistanceUpdate}
+            showPickupRoute={!pickedUp}
+            showDropoffRoute={pickedUp}
+          />
         </div>
       </div>
     );
