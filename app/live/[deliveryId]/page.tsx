@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, MapPin, Navigation, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Loader2, MapPin, Navigation, CheckCircle, XCircle, Clock, MessageCircle, CheckCircle2 } from 'lucide-react';
 
 // Dynamically import the Map component to avoid SSR issues
 const MapWithNoSSR = dynamic(
@@ -109,6 +109,7 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
   const [isOtpVerified, setIsOtpVerified] = useState(false);
   const [pickedUp, setPickedUp] = useState(false);
   const [showRoute, setShowRoute] = useState(false);
+  const [isOrderPickedUp, setIsOrderPickedUp] = useState(false);
 
   // Helper function to parse location from string or object
   const parseLocation = (location: any): { lat: number; lng: number } | null => {
@@ -844,6 +845,52 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
     return String(location);
   };
 
+  // Function to handle delivery status update
+  const handleDeliveryStatusUpdate = async (status: 'PICKED_UP' | 'DELIVERED') => {
+    try {
+      setIsLoading(true);
+      
+      // Update delivery status
+      await updateDeliveryStatus(status);
+      
+      // If status is DELIVERED, show WhatsApp button
+      if (status === 'PICKED_UP') {
+        toast({
+          title: "Order Picked Up",
+          description: "Order has been marked as picked up. Proceed to delivery location.",
+        });
+      }
+      
+    } catch (error) {
+      console.error('Error updating delivery status:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update delivery status. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Function to open WhatsApp with delivery confirmation
+  const openWhatsAppConfirmation = () => {
+    if (!deliveryDetails?.order?.customer?.whatsappNumber) {
+      toast({
+        title: "Error",
+        description: "Customer WhatsApp number not available.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const message = `Delivery #${deliveryDetails.order.orderNumber} has been successfully delivered. Thank you for your order!`;
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/${deliveryDetails.order.customer.whatsappNumber}?text=${encodedMessage}`;
+    
+    window.open(whatsappUrl, '_blank');
+  };
+
   // Render the map view
   const renderMapView = () => {
     if (!deliveryDetails || !pickupLocation) {
@@ -906,10 +953,22 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
             
             {!pickedUp && (
               <button
-                onClick={() => setPickedUp(true)}
+                onClick={handlePickedUp}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium mt-3"
               >
-                Confirm Pickup
+                Confirm as Picked Up
+              </button>
+            )}
+            
+            {isOrderPickedUp && (
+              <button
+                onClick={handleWhatsAppConfirmation}
+                className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium mt-3"
+              >
+                <span className="flex items-center justify-center">
+                  <MessageCircle className="mr-2 h-4 w-4 text-white" />
+                  Confirm Delivery in WhatsApp
+                </span>
               </button>
             )}
           </div>
@@ -947,7 +1006,7 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
             </div>
             <div>
               <p className="text-sm text-gray-500">Status</p>
-              <p className="font-medium">{deliveryDetails.order.status}</p>
+              <p className="font-medium">{deliveryDetails.status}</p>
             </div>
           </div>
         </div>
@@ -1025,8 +1084,20 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
     return renderOtpForm();
   }
 
+  const handlePickedUp = useCallback(() => {
+    setPickedUp(true);
+    setIsOrderPickedUp(true);
+    updateDeliveryStatus('IN_TRANSIT');
+  }, [setPickedUp, updateDeliveryStatus]);
+  
+  const handleWhatsAppConfirmation = useCallback(() => {
+    const phoneNumber = '+971569719345';
+    const whatsappUrl = `https://wa.me/${phoneNumber}`;
+    window.open(whatsappUrl, '_blank');
+  }, [deliveryDetails]);
+
   return (
-    <div className="flex flex-col h-screen bg-gray-100">
+    <div className="flex flex-col h-screen bg-gray-100 overflow-hidden">
       <header className="bg-white shadow-sm z-10">
         <div className="px-4 py-3 flex items-center justify-between">
           <h1 className="text-lg font-semibold">

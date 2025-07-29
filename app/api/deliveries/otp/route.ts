@@ -32,8 +32,12 @@ export async function POST(req: Request) {
       }
     });
     
-    // In production, integrate with WhatsApp API here to send OTP to rider
-    // await sendWhatsAppOTP(riderPhone, otp);
+    await prisma.delivery.update({
+      where: { id: Number(deliveryId) },
+      data: {
+        status: 'PICKING_UP',
+      },
+        });
     
     return NextResponse.json({ 
       success: true, 
@@ -85,14 +89,6 @@ export async function PUT(req: Request) {
         { status: 404 }
       );
     }
-
-    // OTP is valid, clear it to prevent reuse
-    await prisma.delivery.update({
-      where: { id: delivery.id },
-      data: {
-        status: 'IN_TRANSIT',
-      },
-    });
 
     return NextResponse.json({
       success: true,

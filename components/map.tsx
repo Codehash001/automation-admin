@@ -18,62 +18,6 @@ interface MapProps {
   onDistanceUpdate?: (distance: number, duration: number, type: 'pickup' | 'dropoff') => void;
 }
 
-const mapContainerStyles: React.CSSProperties = {
-  width: '100%',
-  height: '100%',
-  position: 'absolute' as const,  // Explicitly type as 'absolute'
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  overflow: 'hidden',
-};
-
-const globalStyles = `
-  html, body, #__next {
-    height: 100%;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    touch-action: none; /* Prevent pull-to-refresh and overscroll effects */
-  }
-  
-  /* Prevent double-tap zoom on mobile */
-  * {
-    -webkit-tap-highlight-color: transparent;
-    -webkit-touch-callout: none;
-    -webkit-text-size-adjust: 100%; /* Prevent font scaling in landscape */
-  }
-  
-  *:focus {
-    outline: none !important;
-  }
-  
-  /* Fix for mobile viewport units */
-  @supports (-webkit-touch-callout: none) {
-    .h-screen {
-      height: -webkit-fill-available;
-    }
-  }
-`;
-
-const recenterButtonStyles: React.CSSProperties = {
-  position: 'absolute',
-  bottom: '20px',
-  right: '20px',
-  zIndex: 1000,
-  backgroundColor: '#fff',
-  border: '2px solid #ccc',
-  borderRadius: '50%',
-  width: '40px',
-  height: '40px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  cursor: 'pointer',
-  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-};
-
 const Map = ({
   currentLocation,
   pickupLocation,
@@ -88,14 +32,14 @@ const Map = ({
   const map = useRef<mapboxgl.Map | null>(null);
   const markers = useRef<{ [key: string]: mapboxgl.Marker }>({});
   const [isMapLoaded, setIsMapLoaded] = useState(false);
-  const [viewportHeight, setViewportHeight] = useState('100vh');
-  const resizeTimeout = useRef<NodeJS.Timeout>();
   const [showRecenterButton, setShowRecenterButton] = useState(false);
   const isCentered = useRef(true);
   const currentZoom = useRef(14);
   const centerMarker = useRef<mapboxgl.Marker | null>(null);
   const userZoomed = useRef(false);
   const userInteracted = useRef(false);
+  const lastLocationUpdate = useRef<number>(0);
+  const animationFrameId = useRef<number>();
 
   // Function to center map on current location
   const centerMap = useCallback(() => {
@@ -103,7 +47,8 @@ const Map = ({
       map.current.flyTo({
         center: [currentLocation.lng, currentLocation.lat],
         zoom: currentZoom.current,
-        essential: true
+        essential: true,
+        duration: 1000
       });
       isCentered.current = true;
       setShowRecenterButton(false);
@@ -111,10 +56,20 @@ const Map = ({
   }, [currentLocation]);
 
   // Function to handle map move events
-  const handleMapMove = useCallback(() => {
-    if (map.current) {
-      userInteracted.current = true;
+  const handleMapMove = useCallback((e: any) => {
+    if (!e.originalEvent) return; // Ignore programmatic movements
+    
+    userInteracted.current = true;
+    if (e.type === 'zoom') {
       userZoomed.current = true;
+      if (map.current) {
+        currentZoom.current = map.current.getZoom();
+      }
+    }
+    
+    if (isCentered.current && (e.type === 'drag' || e.type === 'move')) {
+      isCentered.current = false;
+      setShowRecenterButton(true);
     }
   }, []);
 
@@ -130,33 +85,60 @@ const Map = ({
     mapInstance.on('drag', handleMapMove);
     mapInstance.on('rotate', handleMapMove);
     mapInstance.on('pitch', handleMapMove);
+    mapInstance.on('load', () => {
+      // Force a repaint to prevent flickering
+      mapInstance.resize();
+    });
 
     // Initial setup
     if (currentLocation) {
-      mapInstance.flyTo({
+      mapInstance.jumpTo({
         center: [currentLocation.lng, currentLocation.lat],
         zoom: 14,
-        essential: true
       });
     }
-  }, [currentLocation]);
+    
+    // Disable map rotation using right click + drag
+    mapInstance.dragRotate.disable();
+    
+    // Disable map rotation using touch rotation gesture
+    mapInstance.touchZoomRotate.disableRotation();
+    
+    // Disable map zoom with double click
+    mapInstance.doubleClickZoom.disable();
+    
+    // Disable map zoom with shift + drag
+    mapInstance.boxZoom.disable();
+  }, [currentLocation, handleMapMove]);
 
   // Update map center when currentLocation changes, but only if user hasn't interacted
   useEffect(() => {
-    if (map.current && currentLocation && !userInteracted.current) {
-      map.current.flyTo({
-        center: [currentLocation.lng, currentLocation.lat],
-        zoom: map.current.getZoom(),
-        essential: true
+    if (!map.current || !currentLocation) return;
+    
+    const now = Date.now();
+    // Throttle location updates to prevent excessive re-renders
+    if (now - lastLocationUpdate.current < 1000) return;
+    lastLocationUpdate.current = now;
+    
+    if (!userInteracted.current) {
+      // Use requestAnimationFrame to prevent layout thrashing
+      animationFrameId.current = requestAnimationFrame(() => {
+        if (map.current) {
+          map.current.easeTo({
+            center: [currentLocation.lng, currentLocation.lat],
+            duration: 1000,
+            essential: true
+          });
+        }
       });
     }
+    
+    return () => {
+      if (animationFrameId.current) {
+        cancelAnimationFrame(animationFrameId.current);
+      }
+    };
   }, [currentLocation?.lat, currentLocation?.lng]);
-
-  // Update routes when locations change
-  useEffect(() => {
-    if (!isMapLoaded) return;
-    updateRoutes();
-  }, [currentLocation, pickupLocation, dropoffLocation, isMapLoaded, showPickupRoute, showDropoffRoute]);
 
   // Initialize map
   useEffect(() => {
@@ -215,35 +197,7 @@ const Map = ({
     map.current.addControl(nav, 'top-right');
 
     // Handle map load
-    map.current.once('load', () => {
-      setIsMapLoaded(true);
-      
-      // Add center marker
-      if (currentLocation) {
-        const el = document.createElement('div');
-        el.className = 'center-marker';
-        el.innerHTML = '📍';
-        el.style.fontSize = '24px';
-        el.style.transform = 'translate(-50%, -50%)';
-        
-        centerMarker.current = new mapboxgl.Marker({
-          element: el,
-          anchor: 'center'
-        })
-          .setLngLat([currentLocation.lng, currentLocation.lat])
-          .addTo(map.current!);
-      }
-
-      // Track user interaction
-      const interactionEvents = ['dragstart', 'zoomstart', 'rotatestart', 'mousedown', 'touchstart'];
-      interactionEvents.forEach(event => {
-        map.current?.on(event, () => {
-          userInteracted.current = true;
-          isCentered.current = false;
-          setShowRecenterButton(true);
-        });
-      });
-    });
+    map.current.once('load', handleMapLoad);
 
     // Cleanup
     return () => {
@@ -252,55 +206,15 @@ const Map = ({
         map.current = null;
       }
     };
-  }, [currentLocation?.lat, currentLocation?.lng]);
+  }, [currentLocation?.lat, currentLocation?.lng, handleMapLoad]);
 
-  // Add styles for the center marker
+  // Update routes when locations change
   useEffect(() => {
-    const style = document.createElement('style');
-    style.innerHTML = `
-      .center-marker {
-        width: 30px;
-        height: 30px;
-        background-color: #4285F4;
-        border-radius: 50%;
-        border: 2px solid white;
-        transform: translate(-50%, -50%);
-        pointer-events: none;
-      }
-    `;
-    document.head.appendChild(style);
-    return () => {
-      document.head.removeChild(style);
-    };
-  }, []);
+    if (!isMapLoaded) return;
+    updateRoutes();
+  }, [currentLocation, pickupLocation, dropoffLocation, isMapLoaded, showPickupRoute, showDropoffRoute]);
 
-  // Track user zoom interactions
-  useEffect(() => {
-    if (!map.current) return;
-
-    const onZoom = () => {
-      if (map.current) {
-        userZoomed.current = true;
-        currentZoom.current = map.current.getZoom();
-      }
-    };
-
-    map.current.on('zoomstart', onZoom);
-    map.current.on('zoom', onZoom);
-
-    return () => {
-      if (map.current) {
-        map.current.off('zoomstart', onZoom);
-        map.current.off('zoom', onZoom);
-      }
-    };
-  }, [isMapLoaded]);
-
-  // Reset zoom tracking when changing between pickup and dropoff
-  useEffect(() => {
-    userZoomed.current = false;
-  }, [showPickupRoute, showDropoffRoute]);
-
+  // Update markers when locations change
   useEffect(() => {
     if (!map.current) return;
     updateMarkers();
@@ -579,24 +493,41 @@ const Map = ({
     }
   };
 
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (animationFrameId.current) {
+        cancelAnimationFrame(animationFrameId.current);
+      }
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+      }
+    };
+  }, []);
+
   return (
-    <div style={{ ...mapContainerStyles, height: viewportHeight }}>
-      <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
-      {showRecenterButton && (
-        <button 
-          onClick={centerMap}
-          style={recenterButtonStyles}
-          title="Re-center on rider"
-          aria-label="Re-center map on rider's location"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
-            <path d="M12 8v8" />
-            <path d="M8 12h8" />
-          </svg>
-        </button>
-      )}
-    </div>
+    <div 
+      ref={mapContainer} 
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
+        touchAction: 'pan-x pan-y',
+        WebkitOverflowScrolling: 'touch',
+        WebkitTapHighlightColor: 'transparent',
+        WebkitTouchCallout: 'none',
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
+        outline: 'none',
+        backgroundColor: '#f5f5f5'
+      }}
+    />
   );
 };
 
