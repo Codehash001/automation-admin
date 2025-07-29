@@ -894,11 +894,11 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-medium">Delivery to {deliveryDetails?.order?.customer?.name || 'Customer'}</h3>
             <span className={`text-sm px-2 py-1 rounded-full ${
-              deliveryDetails?.order?.status === 'DELIVERED' ? 'bg-green-100 text-green-800' :
-              deliveryDetails?.order?.status === 'IN_TRANSIT' ? 'bg-blue-100 text-blue-800' :
+              deliveryDetails?.status === 'DELIVERED' ? 'bg-green-100 text-green-800' :
+              deliveryDetails?.status === 'IN_TRANSIT' ? 'bg-blue-100 text-blue-800' :
               'bg-yellow-100 text-yellow-800'
             }`}>
-              {deliveryDetails?.order?.status || 'In Progress'}
+              {deliveryDetails?.status?.replace('_', ' ') || 'PENDING'}
             </span>
           </div>
           
