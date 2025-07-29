@@ -16,6 +16,14 @@ const MapWithNoSSR = dynamic(
   { ssr: false }
 );
 
+const pageStyle = {
+  height: '100vh',
+  width: '100%',
+  display: 'flex',
+  flexDirection: 'column' as const,
+  overflow: 'hidden'
+};
+
 interface Location {
   lat: number;
   lng: number;
@@ -945,8 +953,8 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
               <span className={`text-xs px-2 py-1 rounded-full ${
                 deliveryDetails?.status === 'DELIVERED' ? 'bg-green-100 text-green-800' :
                 deliveryDetails?.status === 'IN_TRANSIT' ? 'bg-blue-100 text-blue-800' :
-                'bg-yellow-100 text-yellow-800'}
-              `}>
+                'bg-yellow-100 text-yellow-800'}`}
+              >
                 {deliveryDetails?.status?.replace('_', ' ') || 'PENDING'}
               </span>
             </div>
@@ -983,10 +991,11 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
         {/* Map Container */}
         <div className="flex-1 relative">
           <MapWithNoSSR
+            key={`map-${params.deliveryId}`}
             currentLocation={currentLocation}
             pickupLocation={!pickedUp ? pickupLocation : null}
             dropoffLocation={pickedUp ? dropoffLocation : null}
-            route={routeInfo.coordinates}
+            route={showRoute ? routeInfo.coordinates : []}
             onRouteUpdate={handleRouteUpdate}
             onDistanceUpdate={handleDistanceUpdate}
             showPickupRoute={!pickedUp}
@@ -1118,7 +1127,9 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100 overflow-hidden">
+    <div className="relative" style={pageStyle}>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+      
       <header className="bg-white shadow-sm z-10">
         <div className="px-4 py-3 flex items-center justify-between">
           <h1 className="text-lg font-semibold">
