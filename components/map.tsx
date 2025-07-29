@@ -124,33 +124,39 @@ export default function Map({
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v11',
-      center: [55.296249, 25.276987], // Default to Dubai
-      zoom: 14, // Default zoom level
-      minZoom: 3, // Allow zooming out more
-      maxZoom: 20, // Allow close zooming
-      touchPitch: true, // Enable pitch (tilt) with touch
-      touchZoomRotate: true, // Enable zoom and rotate on touch devices
-      dragRotate: true, // Enable rotation with two-finger drag
-      renderWorldCopies: true, // Show multiple world copies at low zoom levels
-      interactive: true, // Enable all interactions
-      attributionControl: false, 
-      preserveDrawingBuffer: true, 
-      antialias: true, // Enable antialiasing for better rendering
+      center: [55.296249, 25.276987],
+      zoom: 14,
+      minZoom: 3,
+      maxZoom: 20,
+      // Enable all interactions by default
+      interactive: true,
+      // Enable touch interactions
+      touchPitch: true,
+      touchZoomRotate: true,
+      dragRotate: true,
+      // Other options
+      renderWorldCopies: true,
+      attributionControl: false,
+      preserveDrawingBuffer: true,
+      antialias: true,
       trackResize: true,
     });
 
-    // Enable rotation with right click + drag or ctrl + left click + drag
-    map.current.dragRotate.enable();
-    map.current.touchZoomRotate.enable({
-      around: 'center',
-    });
-
-    // Add navigation controls (compass + zoom buttons)
-    map.current.addControl(new mapboxgl.NavigationControl({
+    // Add navigation controls with compass
+    const nav = new mapboxgl.NavigationControl({
       showCompass: true,
       showZoom: true,
       visualizePitch: true
-    }), 'top-right');
+    });
+    map.current.addControl(nav, 'top-right');
+
+    // Enable rotation with right click + drag or ctrl + left click + drag
+    map.current.dragRotate.enable();
+    
+    // Configure touch interactions
+    map.current.touchZoomRotate.enable({
+      around: 'center',
+    });
 
     map.current.on('load', () => {
       setIsMapLoaded(true);
