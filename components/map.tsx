@@ -143,7 +143,6 @@ export default function Map({
     map.current.dragRotate.enable();
     map.current.touchZoomRotate.enable({
       around: 'center',
-      pinchRotate: true
     });
 
     // Add navigation controls (compass + zoom buttons)
