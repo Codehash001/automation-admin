@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, RefreshCw, MapPin, User, Truck, Car } from 'lucide-react';
+import { Loader2, RefreshCw, MapPin, User, Truck, Car, Clock, Map } from 'lucide-react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { toast } from '@/hooks/use-toast';
@@ -64,28 +64,52 @@ const createCarIcon = () => {
   return icon;
 };
 
-// Simple Map Component
-function SimpleMap({ location, isLoading }: { location: string | null, isLoading: boolean }) {
+// Delivery Map Component with Route Tracking
+function DeliveryMap({ 
+  riderLocation, 
+  destination, 
+  isLoading 
+}: { 
+  riderLocation: string | null, 
+  destination: { lat: number; lng: number } | null,
+  isLoading: boolean 
+}) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
-  const marker = useRef<mapboxgl.Marker | null>(null);
+  const riderMarker = useRef<mapboxgl.Marker | null>(null);
+  const destinationMarker = useRef<mapboxgl.Marker | null>(null);
+  const [routeInfo, setRouteInfo] = useState<{ distance: number; duration: number } | null>(null);
+  const userInteracted = useRef(false);
 
-  // Create marker with Lucide icon
+  // Create car marker
   const carMarker = useMemo(() => createCarIcon(), []);
 
+  // Initialize map
   useEffect(() => {
     if (!mapContainer.current) return;
 
-    // Initialize map
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v11',
       center: [55.2708, 25.2048], // Default to Dubai
-      zoom: 12
+      zoom: 12,
+      maxZoom: 18,
+      minZoom: 10,
+      pitch: 0,
+      bearing: 0,
+      interactive: true,
+      trackResize: true,
+      antialias: true
     });
 
     // Add navigation controls
     map.current.addControl(new mapboxgl.NavigationControl());
+
+    // Track user interaction
+    const handleInteraction = () => userInteracted.current = true;
+    map.current.on('mousedown', handleInteraction);
+    map.current.on('touchstart', handleInteraction);
+    map.current.on('move', handleInteraction);
 
     return () => {
       if (map.current) {
@@ -95,46 +119,116 @@ function SimpleMap({ location, isLoading }: { location: string | null, isLoading
     };
   }, []);
 
-  // Update marker when location changes
+  // Update rider marker and route when locations change
   useEffect(() => {
-    if (!map.current || !location) return;
+    if (!map.current || !riderLocation || !destination) return;
 
     try {
-      const [lat, lng] = location.split(',').map(Number);
-      if (isNaN(lat) || isNaN(lng)) return;
+      const [riderLat, riderLng] = riderLocation.split(',').map(Number);
+      if (isNaN(riderLat) || isNaN(riderLng)) return;
 
-      const newMarker = new mapboxgl.Marker({
-        element: carMarker.cloneNode(true) as HTMLElement
-      })
-        .setLngLat([lng, lat])
-        .addTo(map.current);
-
-      // Remove previous marker if exists
-      if (marker.current) {
-        marker.current.remove();
+      // Update or create rider marker
+      if (!riderMarker.current) {
+        riderMarker.current = new mapboxgl.Marker({
+          element: carMarker.cloneNode(true) as HTMLElement,
+          rotationAlignment: 'map',
+          pitchAlignment: 'auto'
+        }).setLngLat([riderLng, riderLat]).addTo(map.current);
+      } else {
+        riderMarker.current.setLngLat([riderLng, riderLat]);
       }
-      marker.current = newMarker;
 
-      // Center map on marker with smooth animation
-      map.current.flyTo({
-        center: [lng, lat],
-        zoom: 15,
-        essential: true
-      });
+      // Update route
+      updateRoute([riderLng, riderLat], [destination.lng, destination.lat]);
+
+      // Center map on rider if user hasn't interacted
+      if (!userInteracted.current) {
+        map.current.flyTo({
+          center: [riderLng, riderLat],
+          zoom: 15,
+          essential: true
+        });
+      }
     } catch (error) {
-      console.error('Error updating marker:', error);
+      console.error('Error updating rider position:', error);
     }
-  }, [location]);
+  }, [riderLocation, destination]);
+
+  // Update route between two points
+  const updateRoute = useCallback(async (start: [number, number], end: [number, number]) => {
+    if (!map.current) return;
+
+    try {
+      const response = await fetch(
+        `https://api.mapbox.com/directions/v5/mapbox/driving/` +
+        `${start[0]},${start[1]};${end[0]},${end[1]}` +
+        `?geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`
+      );
+
+      const data = await response.json();
+      if (!data.routes?.length) return;
+
+      const route = data.routes[0];
+      setRouteInfo({
+        distance: Math.round(route.distance / 1000 * 10) / 10, // km with 1 decimal
+        duration: Math.ceil(route.duration / 60) // minutes rounded up
+      });
+
+      // Update or create route line
+      const source = map.current.getSource('route') as mapboxgl.GeoJSONSource;
+      if (source) {
+        source.setData({
+          type: 'Feature',
+          properties: {},
+          geometry: route.geometry
+        });
+      } else {
+        map.current.addSource('route', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: route.geometry
+          }
+        });
+
+        map.current.addLayer({
+          id: 'route',
+          type: 'line',
+          source: 'route',
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round'
+          },
+          paint: {
+            'line-color': '#3b82f6',
+            'line-width': 4,
+            'line-opacity': 0.7
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error updating route:', error);
+    }
+  }, []);
 
   return (
-    <div 
-      ref={mapContainer} 
-      className="w-full h-full relative"
-    >
-      {!location && (
+    <div ref={mapContainer} className="w-full h-full relative">
+      {!riderLocation && (
         <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
           <div className="bg-white p-4 rounded-lg shadow-lg">
             <p className="text-sm text-gray-700">Waiting for driver's location...</p>
+          </div>
+        </div>
+      )}
+      {routeInfo && (
+        <div className="absolute bottom-24 left-4 bg-white p-3 rounded-lg shadow-md z-10">
+          <div className="flex items-center space-x-2">
+            <Clock className="h-5 w-5 text-blue-500" />
+            <span className="font-medium">{routeInfo.duration} min</span>
+            <span className="mx-2 text-gray-300">•</span>
+            <Map className="h-5 w-5 text-blue-500" />
+            <span className="font-medium">{routeInfo.distance} km</span>
           </div>
         </div>
       )}
@@ -152,11 +246,23 @@ export default function ViewLiveUpdate({ params }: { params: { deliveryId: strin
   const router = useRouter();
   const refreshInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // Auto-refresh delivery data every 15 seconds
-  const startAutoRefresh = () => {
+  // Get destination from delivery data
+  const destination = useMemo(() => {
+    if (!delivery?.order?.customer?.location) return null;
+    try {
+      const [lat, lng] = delivery.order.customer.location.split(',').map(Number);
+      return { lat, lng };
+    } catch (e) {
+      console.error('Error parsing destination location:', e);
+      return null;
+    }
+  }, [delivery]);
+
+  // Auto-refresh delivery data every 10 seconds
+  const startAutoRefresh = useCallback(() => {
     if (refreshInterval.current) clearInterval(refreshInterval.current);
-    refreshInterval.current = setInterval(fetchDeliveryData, 15000);
-  };
+    refreshInterval.current = setInterval(fetchDeliveryData, 10000);
+  }, []);
 
   // Clean up interval on unmount
   useEffect(() => {
@@ -193,10 +299,15 @@ export default function ViewLiveUpdate({ params }: { params: { deliveryId: strin
       if (!response.ok) throw new Error('Failed to fetch delivery data');
       
       const data = await response.json();
-      setDelivery(data);
+      setDelivery((prev: { driver: any; }) => ({
+        ...prev,
+        ...data,
+        // Merge driver location updates without losing other driver data
+        driver: data.driver ? { ...prev?.driver, ...data.driver } : prev?.driver
+      }));
     } catch (error) {
       console.error('Error fetching delivery data:', error);
-      if (!isVerified) return; // Don't show toast during initial load
+      if (!isVerified) return;
       
       toast({
         title: 'Error',
@@ -295,12 +406,20 @@ export default function ViewLiveUpdate({ params }: { params: { deliveryId: strin
     );
   }
 
+  // Format ETA if available
+  const formatEta = () => {
+    if (!delivery?.eta) return 'Calculating...';
+    const etaDate = new Date(delivery.eta);
+    return etaDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
   return (
     <div className="flex flex-col h-screen bg-white">
       {/* Map - Takes full screen minus header and info panel */}
       <div className="flex-1 relative">
-        <SimpleMap 
-          location={delivery?.driver?.liveLocation} 
+        <DeliveryMap 
+          riderLocation={delivery?.driver?.liveLocation} 
+          destination={destination}
           isLoading={isRefreshing} 
         />
         
@@ -328,13 +447,41 @@ export default function ViewLiveUpdate({ params }: { params: { deliveryId: strin
           {/* Delivery Status */}
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="font-medium text-gray-700">Delivery #{delivery?.id || '...'}</h2>
+              <h2 className="font-medium text-gray-700">
+                Delivery #{delivery?.id || '...'}
+              </h2>
               <p className="text-sm text-gray-500">
-                Status: <span className="font-medium capitalize">{delivery?.status?.toLowerCase() || '...'}</span>
+                Status: <span className="font-medium capitalize">
+                  {delivery?.status?.toLowerCase() || '...'}
+                </span>
               </p>
             </div>
             <div className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
               Live Tracking
+            </div>
+          </div>
+
+          {/* ETA and Distance */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-blue-50 p-3 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <Clock className="h-5 w-5 text-blue-500" />
+                <div>
+                  <p className="text-xs text-gray-500">Estimated Arrival</p>
+                  <p className="font-medium">{formatEta()}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-green-50 p-3 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <MapPin className="h-5 w-5 text-green-500" />
+                <div>
+                  <p className="text-xs text-gray-500">Distance</p>
+                  <p className="font-medium">
+                    {delivery?.distance ? `${delivery.distance.toFixed(1)} km` : 'Calculating...'}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -343,40 +490,41 @@ export default function ViewLiveUpdate({ params }: { params: { deliveryId: strin
             <div className="bg-blue-100 p-2 rounded-full">
               <Truck className="h-5 w-5 text-blue-600" />
             </div>
-            <div>
-              <h3 className="font-medium text-gray-900">Driver</h3>
-              <p className="text-sm text-gray-700">{delivery?.driver?.name || 'Not assigned'}</p>
-            </div>
-          </div>
-
-          {/* Delivery From */}
-          <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-            <div className="bg-green-100 p-2 rounded-full">
-              <MapPin className="h-5 w-5 text-green-600" />
-            </div>
-            <div>
-              <h3 className="font-medium text-gray-900">From</h3>
+            <div className="flex-1">
+              <h3 className="font-medium text-gray-900">
+                {delivery?.driver?.name || 'Driver'}
+              </h3>
               <p className="text-sm text-gray-700">
-                {delivery?.order?.outlet?.name || 'Loading...'}
+                {delivery?.driver?.vehicleNumber || 'En route to your location'}
               </p>
             </div>
+            {delivery?.driver?.phone && (
+              <a 
+                href={`tel:${delivery.driver.phone}`}
+                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+              >
+                Call
+              </a>
+            )}
           </div>
 
-          {/* Delivery To */}
-          <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-            <div className="bg-purple-100 p-2 rounded-full">
-              <User className="h-5 w-5 text-purple-600" />
-            </div>
-            <div>
-              <h3 className="font-medium text-gray-900">To</h3>
-              <p className="text-sm text-gray-700">
-                {delivery?.order?.customer?.name || 'Loading...'}
-                {delivery?.order?.outlet?.address && (
-                  <span className="block text-gray-500 mt-1">
-                    {delivery.order.outlet.address}
-                  </span>
+          {/* Delivery Details */}
+          <div className="space-y-2">
+            <div className="flex items-start space-x-3">
+              <div className="bg-purple-100 p-2 rounded-full mt-1">
+                <MapPin className="h-5 w-5 text-purple-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-medium text-gray-900">Delivery To</h3>
+                <p className="text-sm text-gray-700">
+                  {delivery?.order?.customer?.name || 'Your Location'}
+                </p>
+                {delivery?.order?.deliveryAddress && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {delivery.order.deliveryAddress}
+                  </p>
                 )}
-              </p>
+              </div>
             </div>
           </div>
         </div>
