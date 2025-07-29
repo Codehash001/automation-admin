@@ -17,11 +17,12 @@ const MapWithNoSSR = dynamic(
 );
 
 const pageStyle = {
-  height: '100vh',
+  height: '100%',  // Changed from 100vh to 100% to work with parent container
   width: '100%',
   display: 'flex',
   flexDirection: 'column' as const,
-  overflow: 'hidden'
+  overflow: 'hidden',
+  position: 'relative' as const,  // Added for proper positioning of children
 };
 
 interface Location {
