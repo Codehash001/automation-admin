@@ -991,7 +991,7 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
         {/* Map Container */}
         <div className="flex-1 relative">
           <MapWithNoSSR
-            key={`map-${params.deliveryId}`}
+            key={`map-${params.deliveryId}-${pickedUp ? 'dropoff' : 'pickup'}`}
             currentLocation={currentLocation}
             pickupLocation={!pickedUp ? pickupLocation : null}
             dropoffLocation={pickedUp ? dropoffLocation : null}
@@ -1000,6 +1000,7 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
             onDistanceUpdate={handleDistanceUpdate}
             showPickupRoute={!pickedUp}
             showDropoffRoute={pickedUp}
+            isPickedUp={pickedUp}
           />
         </div>
       </div>
@@ -1098,9 +1099,27 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
   const handlePickedUp = useCallback(async () => {
     try {
       setIsLoading(true);
+      // First update the delivery status
       await updateDeliveryStatus('IN_TRANSIT');
+      
+      // Set pickedUp state to true which will trigger the route update
       setPickedUp(true);
       setIsOrderPickedUp(true);
+      
+      // Force recalculate the route from current location to dropoff
+      if (currentLocation && dropoffLocation) {
+        // Calculate the route from current location to dropoff
+        await calculateRoute(currentLocation, dropoffLocation);
+        
+        // Ensure the route is shown on the map
+        setShowRoute(true);
+      }
+      
+      toast({
+        title: "Order Picked Up",
+        description: "You've picked up the order. The route to the drop-off location is now shown on the map.",
+      });
+      
     } catch (error) {
       console.error('Error updating delivery status:', error);
       toast({
@@ -1111,15 +1130,13 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
     } finally {
       setIsLoading(false);
     }
-  }, [updateDeliveryStatus]);
+  }, [currentLocation, dropoffLocation, updateDeliveryStatus, calculateRoute]);
   
   const handleWhatsAppConfirmation = useCallback(() => {
     const phoneNumber = '+971569719345';
-    const message = `Delivery Confirmation: Order #${deliveryDetails?.order?.id || ''} has been delivered.`;
-    const encodedMessage = encodeURIComponent(message);
-    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
+    const whatsappUrl = `https://wa.me/${phoneNumber}`;
     window.open(whatsappUrl, '_blank');
-  }, [deliveryDetails]);
+  }, []);
 
   // Main render
   if (!isVerified || !deliveryDetails) {

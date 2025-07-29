@@ -91,7 +91,7 @@ function DeliveryMap({
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v11',
-      center: [55.2708, 25.2048], // Default to Dubai
+      // center: [55.2708, 25.2048], // Default to Dubai
       zoom: 12,
       maxZoom: 18,
       minZoom: 10,
@@ -481,49 +481,6 @@ export default function ViewLiveUpdate({ params }: { params: { deliveryId: strin
                     {delivery?.distance ? `${delivery.distance.toFixed(1)} km` : 'Calculating...'}
                   </p>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Driver Info */}
-          <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-            <div className="bg-blue-100 p-2 rounded-full">
-              <Truck className="h-5 w-5 text-blue-600" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-medium text-gray-900">
-                {delivery?.driver?.name || 'Driver'}
-              </h3>
-              <p className="text-sm text-gray-700">
-                {delivery?.driver?.vehicleNumber || 'En route to your location'}
-              </p>
-            </div>
-            {delivery?.driver?.phone && (
-              <a 
-                href={`tel:${delivery.driver.phone}`}
-                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-              >
-                Call
-              </a>
-            )}
-          </div>
-
-          {/* Delivery Details */}
-          <div className="space-y-2">
-            <div className="flex items-start space-x-3">
-              <div className="bg-purple-100 p-2 rounded-full mt-1">
-                <MapPin className="h-5 w-5 text-purple-600" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-medium text-gray-900">Delivery To</h3>
-                <p className="text-sm text-gray-700">
-                  {delivery?.order?.customer?.name || 'Your Location'}
-                </p>
-                {delivery?.order?.deliveryAddress && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    {delivery.order.deliveryAddress}
-                  </p>
-                )}
               </div>
             </div>
           </div>
