@@ -126,34 +126,36 @@ export default function Map({
       style: 'mapbox://styles/mapbox/streets-v11',
       center: [55.296249, 25.276987], // Default to Dubai
       zoom: 14, // Default zoom level
-      minZoom: 10, // Prevent zooming out too far
+      minZoom: 3, // Allow zooming out more
       maxZoom: 20, // Allow close zooming
-      touchPitch: false, 
-      touchZoomRotate: true, // Allow zoom and rotate on touch devices
-      dragRotate: false, 
-      renderWorldCopies: true, // Show multiple copies of the world at low zoom levels
-      interactive: true,
+      touchPitch: true, // Enable pitch (tilt) with touch
+      touchZoomRotate: true, // Enable zoom and rotate on touch devices
+      dragRotate: true, // Enable rotation with two-finger drag
+      renderWorldCopies: true, // Show multiple world copies at low zoom levels
+      interactive: true, // Enable all interactions
       attributionControl: false, 
       preserveDrawingBuffer: true, 
       antialias: true, // Enable antialiasing for better rendering
       trackResize: true,
     });
 
-    map.current.dragRotate.disable();
-    map.current.touchZoomRotate.disableRotation();
+    // Enable rotation with right click + drag or ctrl + left click + drag
+    map.current.dragRotate.enable();
+    map.current.touchZoomRotate.enable({
+      around: 'center',
+      pinchRotate: true
+    });
+
+    // Add navigation controls (compass + zoom buttons)
+    map.current.addControl(new mapboxgl.NavigationControl({
+      showCompass: true,
+      showZoom: true,
+      visualizePitch: true
+    }), 'top-right');
 
     map.current.on('load', () => {
       setIsMapLoaded(true);
       
-      map.current?.addControl(
-        new mapboxgl.NavigationControl({
-          showCompass: false, 
-          showZoom: true,
-          visualizePitch: false,
-        }),
-        'top-right'
-      );
-
       setTimeout(() => {
         map.current?.resize();
       }, 0);
