@@ -90,6 +90,7 @@ export async function PUT(req: Request) {
       );
     }
 
+
     return NextResponse.json({
       success: true,
       message: 'OTP verified successfully',

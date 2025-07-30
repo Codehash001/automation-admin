@@ -1106,6 +1106,19 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
       // Set pickedUp state to true which will trigger the route update
       setPickedUp(true);
       setIsOrderPickedUp(true);
+
+      // Mark a delivery as delivered
+      await fetch('/api/deliveries/status', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_API_KEY}`
+        },
+        body: JSON.stringify({
+          deliveryId: 123,
+          status: 'IN_TRANSIT'
+        })
+      });
       
       // Force recalculate the route from current location to dropoff
       if (currentLocation && dropoffLocation) {

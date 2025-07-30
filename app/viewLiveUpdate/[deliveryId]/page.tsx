@@ -123,33 +123,124 @@ function DeliveryMap({
     return `${hours}h ${remainingMins > 0 ? `${remainingMins}m` : ''}`.trim();
   };
 
+  // Add a ref for the route line
+  const routeLine = useRef<mapboxgl.Layer | null>(null);
+  const routeSource = useRef<mapboxgl.GeoJSONSource | null>(null);
+  const routeLabel = useRef<mapboxgl.Marker | null>(null);
+
+  // Function to update the direct line between rider and destination
+  const updateDirectLine = useCallback((from: [number, number], to: [number, number], duration?: number) => {
+    if (!map.current) return;
+
+    // Create or update the line source
+    if (!routeSource.current) {
+      map.current.addSource('route-line', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: [from, to]
+          }
+        }
+      });
+      routeSource.current = map.current.getSource('route-line') as mapboxgl.GeoJSONSource;
+      
+      // Add the line layer
+      map.current.addLayer({
+        id: 'route-line',
+        type: 'line',
+        source: 'route-line',
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round'
+        },
+        paint: {
+          'line-color': '#3b82f6',
+          'line-width': 3,
+          'line-dasharray': [2, 2]
+        }
+      });
+    }
+
+    // Update the line
+    if (routeSource.current) {
+      routeSource.current.setData({
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'LineString',
+          coordinates: [from, to]
+        }
+      });
+    }
+
+    // Create or update the ETA label with actual duration
+    const etaText = duration ? `${formatDuration(duration)} away` : 'Calculating...';
+    
+    if (!routeLabel.current) {
+      const el = document.createElement('div');
+      el.className = 'bg-white text-blue-600 text-xs font-bold px-2 py-1 rounded shadow-md whitespace-nowrap';
+      el.textContent = etaText;
+      
+      routeLabel.current = new mapboxgl.Marker({
+        element: el,
+        offset: [0, 0]
+      }).setLngLat([(from[0] + to[0]) / 2, (from[1] + to[1]) / 2]).addTo(map.current);
+    } else {
+      // Update existing label
+      const el = routeLabel.current.getElement();
+      if (el) {
+        el.textContent = etaText;
+      }
+      routeLabel.current.setLngLat([(from[0] + to[0]) / 2, (from[1] + to[1]) / 2]);
+    }
+  }, []);
+
+  // Clean up line and label on unmount
+  useEffect(() => {
+    return () => {
+      if (map.current) {
+        if (map.current.getLayer('route-line')) {
+          map.current.removeLayer('route-line');
+        }
+        if (map.current.getSource('route-line')) {
+          map.current.removeSource('route-line');
+        }
+      }
+      if (routeLabel.current) {
+        routeLabel.current.remove();
+      }
+    };
+  }, []);
+
   // Update route between two points
   const updateRoute = useCallback(async (start: [number, number], end: [number, number]) => {
     if (!map.current || !isMapLoaded) {
-      console.log('Map not ready for route update');
+      console.error('Map not loaded yet');
       return;
     }
 
-    const now = Date.now();
-    if (now - lastRouteUpdate.current < ROUTE_UPDATE_INTERVAL) return;
-    lastRouteUpdate.current = now;
+    // Update the direct line immediately with current positions
+    updateDirectLine(start, end, routeInfo?.duration);
 
     try {
-      console.log('Updating route from:', start, 'to:', end);
-      
       // Convert to Mapbox coordinates
       const mapboxStart = toMapboxCoords(start);
       const mapboxEnd = toMapboxCoords(end);
       
       // Check if points are too far apart for routing (e.g., different countries)
-      const distance = Math.sqrt(
+      const directDistance = Math.sqrt(
         Math.pow(mapboxEnd[0] - mapboxStart[0], 2) + 
         Math.pow(mapboxEnd[1] - mapboxStart[1], 2)
       ) * 100; // Rough distance in km
 
+      console.log('Direct distance (km):', directDistance);
+
       let routeData: GeoJSON.Feature<GeoJSON.LineString>;
 
-      if (distance > 100) { // If points are more than 100km apart
+      if (directDistance > 100) { // If points are more than 100km apart
         console.log('Points too far apart for routing, showing direct line');
         
         // Create a simple direct line between points
@@ -164,40 +255,50 @@ function DeliveryMap({
         
         // Set a default duration/distance since we can't calculate it
         setRouteInfo({
-          distance: distance * 1000, // Convert to meters
-          duration: distance * 2 * 60 // Estimate 2 minutes per km
+          distance: directDistance * 1000, // Convert to meters
+          duration: directDistance * 2 * 60 // Estimate 2 minutes per km
         });
       } else {
         try {
           // Format coordinates for URL: lng,lat;lng,lat
           const coordinates = `${mapboxStart[0]},${mapboxStart[1]};${mapboxEnd[0]},${mapboxEnd[1]}`;
           
+          console.log('Making Mapbox Directions API request with coordinates:', coordinates);
+          
           // Make API request with required parameters
-          const response = await fetch(
-            `https://api.mapbox.com/directions/v5/mapbox/driving/${coordinates}` +
-            `?geometries=geojson` +
-            `&overview=full` +
-            `&steps=true` +
-            `&access_token=${mapboxgl.accessToken}`
-          );
-
+          const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordinates}?geometries=geojson&overview=full&steps=true&access_token=${mapboxgl.accessToken}`;
+          console.log('API URL:', url);
+          
+          const response = await fetch(url);
+          
           if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorText = await response.text();
+            console.error('Mapbox API error:', {
+              status: response.status,
+              statusText: response.statusText,
+              error: errorText
+            });
+            throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`);
           }
 
           const data = await response.json();
           console.log('Route API response:', data);
           
           if (!data.routes?.[0]) {
-            console.error('No route found between points:', { start, end });
-            return;
+            console.error('No route found in response:', data);
+            throw new Error('No route found in response');
           }
 
           const route = data.routes[0];
           const distance = route.distance; // in meters
           const duration = route.duration; // in seconds
           
-          console.log('Route updated:', { distance, duration });
+          console.log('Successfully got route:', { 
+            distance: `${(distance/1000).toFixed(2)} km`, 
+            duration: `${Math.round(duration/60)} min`,
+            geometry: route.geometry ? 'present' : 'missing',
+            coordinates: route.geometry?.coordinates?.length || 0
+          });
           
           // Update route info with raw values (conversion happens in display)
           setRouteInfo({
@@ -222,14 +323,15 @@ function DeliveryMap({
             }
           };
           setRouteInfo({
-            distance: distance * 1000,
-            duration: distance * 2 * 60
+            distance: directDistance * 1000,
+            duration: directDistance * 2 * 60
           });
         }
       }
 
       // Update the route source if it exists, otherwise create it
       if (!map.current.getSource('route')) {
+        console.log('Creating new route source and layer');
         // Add the route source
         map.current.addSource('route', {
           type: 'geojson',
@@ -238,6 +340,7 @@ function DeliveryMap({
 
         // Add the route layer if it doesn't exist
         if (!map.current.getLayer('route')) {
+          console.log('Adding route layer to map');
           map.current.addLayer({
             id: 'route',
             type: 'line',
@@ -254,15 +357,19 @@ function DeliveryMap({
           }, 'waterway-label');
         }
       } else {
+        console.log('Updating existing route source');
         // Update existing source
         (map.current.getSource('route') as mapboxgl.GeoJSONSource).setData(routeData);
       }
       
       setLastUpdate(new Date());
     } catch (error) {
-      console.error('Error updating route:', error);
+      console.error('Error in updateRoute:', error);
     }
-  }, [isMapLoaded]);
+    
+    // Update the direct line
+    updateDirectLine(start, end, routeInfo?.duration);
+  }, [updateDirectLine, isMapLoaded]);
 
   // Initialize map and add route source/layer
   useEffect(() => {
@@ -392,16 +499,22 @@ function DeliveryMap({
 
       console.log('Updating rider position:', { riderLat, riderLng, destination });
 
-      // Create or update rider marker with car icon
+      // Create or update rider marker with a blue dot
+      const createRiderMarker = () => {
+        const el = document.createElement('div');
+        el.className = 'rider-dot';
+        return el;
+      };
+
       if (!riderMarker.current) {
-        const carIcon = createCarIcon();
+        const markerEl = createRiderMarker();
+        console.log('Creating new rider marker at:', [riderLng, riderLat]);
         riderMarker.current = new mapboxgl.Marker({
-          element: carIcon,
-          rotationAlignment: 'map',
-          pitchAlignment: 'auto',
-          rotation: 0
-        }).setLngLat([riderLng, riderLat]).addTo(map.current);
-      } else if (riderMarker.current) {
+          element: markerEl,
+          anchor: 'center'
+        }).setLngLat([riderLng, riderLat]).addTo(map.current);  
+      } else {
+        console.log('Updating rider marker position to:', [riderLng, riderLat]);
         riderMarker.current.setLngLat([riderLng, riderLat]);
       }
 
@@ -478,10 +591,8 @@ function DeliveryMap({
   // Add auto-refresh effect
   useEffect(() => {
     // Clear any existing interval
-    if (updateInterval.current) {
-      clearInterval(updateInterval.current);
-      updateInterval.current = null;
-    }
+    if (updateInterval.current) clearInterval(updateInterval.current);
+    updateInterval.current = null;
 
     // Only set up auto-refresh if we have both locations
     if (riderLocation && destination) {
@@ -511,30 +622,79 @@ function DeliveryMap({
     };
   }, [riderLocation, destination, updateRoute]);
 
-  return (
-    <div className="relative w-full h-full">
-      <div ref={mapContainer} className="w-full h-full" />
+  useEffect(() => {
+    // Add the pulsing animation styles
+    const style = document.createElement('style');
+    style.innerHTML = `
+      @keyframes pulse {
+        0% { transform: scale(0.8); opacity: 0.8; }
+        70% { transform: scale(1.2); opacity: 0.6; }
+        100% { transform: scale(0.8); opacity: 0.8; }
+      }
+      
+      .rider-dot {
+        width: 16px;
+        height: 16px;
+        background-color: #3b82f6;
+        border-radius: 50%;
+        border: 2px solid white;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+      }
+      
+      .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+        text-transform: capitalize;
+      }
+      
+      .status-pending { background-color: #fef3c7; color: #92400e; }
+      .status-accepted { background-color: #dbeafe; color: #1e40af; }
+      .status-picked_up { background-color: #dbeafe; color: #1e40af; }
+      .status-delivered { background-color: #dcfce7; color: #166534; }
+      .status-cancelled { background-color: #fee2e2; color: #991b1b; }
+    `;
+    document.head.appendChild(style);
+    
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
 
-      {/* Route info overlay */}
+  return (
+    <div className="relative w-full h-screen flex flex-col">
+      <div ref={mapContainer} className="flex-1 w-full" />
+
+      {/* Route info overlay - made more compact for mobile */}
       {routeInfo && (
-        <div className="absolute bottom-4 left-4 bg-white p-3 rounded-lg shadow-md z-10">
-          <div className="flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-gray-500" />
-            <span className="text-sm font-medium">Distance: {formatDistance(routeInfo.distance)}</span>
-          </div>
-          <div className="flex items-center gap-2 mt-1">
-            <Clock className="w-4 h-4 text-gray-500" />
-            <span className="text-sm font-medium">ETA: {formatDuration(routeInfo.duration)}</span>
+        <div className="absolute bottom-4 left-2 right-2 md:left-4 md:right-auto bg-white p-2 md:p-3 rounded-lg shadow-md z-10 max-w-md mx-auto md:mx-0">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-gray-500 flex-shrink-0" />
+              <span className="text-sm font-medium truncate">
+                {formatDistance(routeInfo.distance)}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-gray-500 flex-shrink-0" />
+              <span className="text-sm font-medium">
+                ETA: {formatDuration(routeInfo.duration)}
+              </span>
+            </div>
           </div>
           {lastUpdate && (
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-xs text-gray-500 mt-1 text-center sm:text-left">
               Updated: {new Date(lastUpdate).toLocaleTimeString()}
             </div>
           )}
         </div>
       )}
 
-      {/* Recenter button */}
+      {/* Recenter button - adjusted for mobile */}
       {!isFollowing.current && (
         <button
           onClick={() => {
@@ -550,10 +710,10 @@ function DeliveryMap({
               }
             }
           }}
-          className="absolute bottom-4 right-4 bg-white dark:bg-gray-800 p-2 rounded-full shadow-lg z-10 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          className="absolute bottom-16 md:bottom-4 right-2 md:right-4 bg-white dark:bg-gray-800 p-2 rounded-full shadow-lg z-10 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           aria-label="Recenter map"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-700 dark:text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 md:h-6 md:w-6 text-gray-700 dark:text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
