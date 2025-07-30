@@ -176,25 +176,31 @@ function DeliveryMap({
       });
     }
 
-    // Create or update the ETA label with actual duration
-    const etaText = duration ? `${formatDuration(duration)} away` : 'Calculating...';
-    
-    if (!routeLabel.current) {
-      const el = document.createElement('div');
-      el.className = 'bg-white text-blue-600 text-xs font-bold px-2 py-1 rounded shadow-md whitespace-nowrap';
-      el.textContent = etaText;
+    // Only create/update the ETA label if we have a valid duration
+    if (typeof duration === 'number') {
+      const etaText = `${formatDuration(duration)} away`;
       
-      routeLabel.current = new mapboxgl.Marker({
-        element: el,
-        offset: [0, 0]
-      }).setLngLat([(from[0] + to[0]) / 2, (from[1] + to[1]) / 2]).addTo(map.current);
-    } else {
-      // Update existing label
-      const el = routeLabel.current.getElement();
-      if (el) {
+      if (!routeLabel.current) {
+        const el = document.createElement('div');
+        el.className = 'bg-white text-blue-600 text-xs font-bold px-2 py-1 rounded shadow-md whitespace-nowrap';
         el.textContent = etaText;
+        
+        routeLabel.current = new mapboxgl.Marker({
+          element: el,
+          offset: [0, 0]
+        }).setLngLat([(from[0] + to[0]) / 2, (from[1] + to[1]) / 2]).addTo(map.current);
+      } else {
+        // Update existing label
+        const el = routeLabel.current.getElement();
+        if (el) {
+          el.textContent = etaText;
+        }
+        routeLabel.current.setLngLat([(from[0] + to[0]) / 2, (from[1] + to[1]) / 2]);
       }
-      routeLabel.current.setLngLat([(from[0] + to[0]) / 2, (from[1] + to[1]) / 2]);
+    } else if (routeLabel.current) {
+      // Remove the label if duration is not available
+      routeLabel.current.remove();
+      routeLabel.current = null;
     }
   }, []);
 
@@ -303,7 +309,7 @@ function DeliveryMap({
           // Update route info with raw values (conversion happens in display)
           setRouteInfo({
             distance,
-            duration
+            duration: Math.round(duration / 60) // Convert to minutes
           });
           
           routeData = {
@@ -896,7 +902,7 @@ export default function ViewLiveUpdate({ params }: { params: { deliveryId: strin
 
   // Format ETA if available
   const formatEta = () => {
-    if (!delivery?.eta) return 'Calculating...';
+    if (!delivery?.eta) return '';
     const etaDate = new Date(delivery.eta);
     return etaDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
