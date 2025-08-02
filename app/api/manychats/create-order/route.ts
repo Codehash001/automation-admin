@@ -312,12 +312,12 @@ export async function POST(request: Request) {
     );
 
     console.log('[ManyChats] Starting database transaction');
-    // Create the order in a transaction
-    const order = await prisma.$transaction(async (prisma: any) => {
+    // Create the order and items in a single transaction
+    const [newOrder, createdItems] = await prisma.$transaction(async (tx) => {
       console.log('[ManyChats] Creating order record');
       
       // First create the order
-      const newOrder = await prisma.order.create({
+      const order = await tx.order.create({
         data: {
           customer: { connect: { id: parseInt(customerId) } },
           emirates: { connect: { id: parseInt(emiratesId) } },
@@ -343,57 +343,44 @@ export async function POST(request: Request) {
         }
       });
 
-      console.log(`[ManyChats] Order created with ID: ${newOrder.id}`);
+      console.log(`[ManyChats] Order created with ID: ${order.id}`);
       console.log('[ManyChats] Creating order items:', JSON.stringify(orderItems, null, 2));
 
-      // Create order items
-      const createdItems = await Promise.all(
-        orderItems.map((item: any) => 
-          prisma.orderItem.create({
-            data: {
-              orderId: newOrder.id,
-              menuItemId: item.menuItemId,
-              quantity: item.quantity,
-              price: item.price,
-            },
-            include: {
-              menuItem: true
-            }
-          })
-        )
-      );
+      // Create order items in a batch
+      await tx.orderItem.createMany({
+        data: orderItems.map(item => ({
+          orderId: order.id,
+          menuItemId: item.menuItemId,
+          quantity: item.quantity,
+          price: item.price,
+        })),
+        skipDuplicates: true,
+      });
 
-      console.log(`[ManyChats] Created ${createdItems.length} order items`);
-      console.log('[ManyChats] Created items:', JSON.stringify(createdItems, null, 2));
+      // Fetch the created items with their menuItem relations
+      const items = await tx.orderItem.findMany({
+        where: { orderId: order.id },
+        include: { menuItem: true }
+      });
 
-      return {
-        ...newOrder,
-        items: createdItems
-      };
+      console.log(`[ManyChats] Created ${items.length} order items`);
+      
+      return [order, items];
+    }, {
+      timeout: 30000, // 30 second timeout for the entire transaction
+      maxWait: 20000, // 20 second max wait for the transaction to start
     });
 
-    console.log(`[ManyChats] Transaction completed for order ${order.id}`);
+    // Combine the results
+    const orderWithItems = {
+      ...newOrder,
+      items: createdItems
+    };
 
-    // Get order with all related data for the response
-    const fullOrder = await prisma.order.findUnique({
-      where: { id: order.id },
-      include: {
-        customer: true,
-        outlet: true,
-        items: {
-          include: {
-            menuItem: true
-          }
-        }
-      }
-    });
-
-    if (!fullOrder) {
-      throw new Error('Failed to retrieve order details');
-    }
+    console.log(`[ManyChats] Transaction completed for order ${orderWithItems.id}`);
 
     // Format the order items
-    const orderItemsResponse = fullOrder.items.map((item: any) => ({
+    const orderItemsResponse = orderWithItems.items.map((item: any) => ({
       detail: `${item.menuItem.name} × ${item.quantity} - ${(Number(item.price) * Number(item.quantity)).toFixed(2)} AED`
     }));
 
@@ -408,33 +395,33 @@ export async function POST(request: Request) {
     const response = {
       success: true,
       order: {
-        id: fullOrder.id,
-        status: fullOrder.status,
-        orderType: fullOrder.orderType,
-        paymentMethod: fullOrder.paymentMethod,
-        createdAt: fullOrder.createdAt,
+        id: orderWithItems.id,
+        status: orderWithItems.status,
+        orderType: orderWithItems.orderType,
+        paymentMethod: orderWithItems.paymentMethod,
+        createdAt: orderWithItems.createdAt,
         customer: {
-          id: fullOrder.customer.id,
-          name: fullOrder.customer.name,
-          phone: fullOrder.customer.whatsappNumber
+          id: orderWithItems.customer.id,
+          name: orderWithItems.customer.name,
+          phone: orderWithItems.customer.whatsappNumber
         },
         outlet: {
-          id: fullOrder.outlet?.id,
-          name: fullOrder.outlet?.name,
-          whatsappNo: fullOrder.outlet?.whatsappNo
+          id: orderWithItems.outlet?.id,
+          name: orderWithItems.outlet?.name,
+          whatsappNo: orderWithItems.outlet?.whatsappNo
         },
         delivery: {
-          address: fullOrder.deliveryAddress,
-          location: fullOrder.deliveryLocation,
-          buildingType: fullOrder.buildingType
+          address: orderWithItems.deliveryAddress,
+          location: orderWithItems.deliveryLocation,
+          buildingType: orderWithItems.buildingType
         },
         items: groupedItems,
         summary: {
-          subtotal: `${fullOrder.subtotal.toFixed(2)} AED`,
-          serviceFee: fullOrder.serviceFee ? `${fullOrder.serviceFee.toFixed(2)} AED` : '0.00 AED',
-          deliveryFee: fullOrder.deliveryFee ? `${fullOrder.deliveryFee.toFixed(2)} AED` : '0.00 AED',
-          vat: fullOrder.vat ? `${fullOrder.vat.toFixed(2)} AED` : '0.00 AED',
-          total: `${fullOrder.total.toFixed(2)} AED`,
+          subtotal: `${orderWithItems.subtotal.toFixed(2)} AED`,
+          serviceFee: orderWithItems.serviceFee ? `${orderWithItems.serviceFee.toFixed(2)} AED` : '0.00 AED',
+          deliveryFee: orderWithItems.deliveryFee ? `${orderWithItems.deliveryFee.toFixed(2)} AED` : '0.00 AED',
+          vat: orderWithItems.vat ? `${orderWithItems.vat.toFixed(2)} AED` : '0.00 AED',
+          total: `${orderWithItems.total.toFixed(2)} AED`,
           fees: fees.map(fee => ({
             name: fee.name,
             amount: `${fee.amount.toFixed(2)} AED`,
@@ -442,19 +429,19 @@ export async function POST(request: Request) {
             ...(fee.rate && { rate: `${fee.rate}%` })
           }))
         },
-        note: fullOrder.note
+        note: orderWithItems.note
       }
     };
 
-    const notificationMessage = generateOrderNotification(fullOrder);
+    const notificationMessage = generateOrderNotification(orderWithItems);
 
-    console.log(`[ManyChats] Order ${fullOrder.id} created successfully`);
+    console.log(`[ManyChats] Order ${orderWithItems.id} created successfully`);
     return NextResponse.json({
       ...response,
       notification: {
         message: notificationMessage,
-        orderId: fullOrder.id,
-        total: fullOrder.total
+        orderId: orderWithItems.id,
+        total: orderWithItems.total
       }
     });
     
