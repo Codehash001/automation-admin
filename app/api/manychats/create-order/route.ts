@@ -113,6 +113,8 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
       
       // Check if this is VAT (5%)
       if (price.name.toLowerCase().includes('vat')) {
+        // Calculate VAT based on the sum of service fee and delivery fee
+        amount = (serviceFee + deliveryFee) * price.value.toNumber() / 100;
         vat = parseFloat(amount.toFixed(2));
       } 
       // Check if this is the service fee
@@ -151,9 +153,9 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
     total += amount;
   }
 
-  // If VAT wasn't explicitly set but is required, calculate it (5% of subtotal + service fee + delivery fee)
+  // If VAT wasn't explicitly set but is required, calculate it (5% of service fee + delivery fee)
   if (vat === 0) {
-    vat = parseFloat(((subtotal + serviceFee + deliveryFee) * 0.05).toFixed(2));
+    vat = parseFloat(((serviceFee + deliveryFee) * 0.05).toFixed(2));
     total += vat;
   }
 

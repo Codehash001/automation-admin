@@ -205,7 +205,10 @@ export async function POST(request: Request) {
           break;
         case 'vat':
         case 'tax':
-          amount = Number(((subtotal * Number(price.value)) / 100).toFixed(2));
+          // Calculate VAT based on the sum of service fee and additional fee
+          const serviceFee = fees.find(f => f.name.toLowerCase() === 'service_fee')?.amount || 0;
+          const deliveryFee = fees.find(f => f.name.toLowerCase() === 'delivery_fee')?.amount || 0;
+          amount = Number((((serviceFee + deliveryFee) * Number(price.value)) / 100).toFixed(2));
           break;
         default:
           amount = Number(price.value);

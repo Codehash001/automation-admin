@@ -10,7 +10,21 @@ export async function GET(req: NextRequest) {
     const cuisineId = searchParams.get('cuisineId');
     const menuName = searchParams.get('name');
 
-    const menus = await prisma.menu.findMany({
+    // Get current time in hours (24-hour format)
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinutes = now.getMinutes();
+    const currentTime = currentHour + (currentMinutes / 60);
+
+    // Define time windows for different meal types
+    const mealTimes = {
+      breakfast: { start: 6, end: 11.5 },    // 6:00 AM - 11:30 AM
+      lunch: { start: 11.5, end: 16.5 },     // 11:30 AM - 4:30 PM
+      dinner: { start: 16.5, end: 23.5 }     // 4:30 PM - 11:30 PM
+    };
+
+    // Fetch all menus that match the filters
+    let menus = await prisma.menu.findMany({
       where: {
         ...(outletId && { outletId: parseInt(outletId) }),
         ...(cuisineId && { cuisineId: parseInt(cuisineId) }),
@@ -28,6 +42,27 @@ export async function GET(req: NextRequest) {
           select: { items: true },
         },
       },
+    });
+
+    // Filter menus based on meal times if they are breakfast, lunch, or dinner
+    menus = menus.filter(menu => {
+      const menuNameLower = menu.name.toLowerCase();
+      
+      // Skip time filtering for non-meal menus
+      if (!['breakfast', 'lunch', 'dinner'].some(meal => menuNameLower.includes(meal))) {
+        return true;
+      }
+      
+      // Apply time-based filtering for meal-specific menus
+      if (menuNameLower.includes('breakfast')) {
+        return currentTime >= mealTimes.breakfast.start && currentTime <= mealTimes.breakfast.end;
+      } else if (menuNameLower.includes('lunch')) {
+        return currentTime >= mealTimes.lunch.start && currentTime <= mealTimes.lunch.end;
+      } else if (menuNameLower.includes('dinner')) {
+        return currentTime >= mealTimes.dinner.start && currentTime <= mealTimes.dinner.end;
+      }
+      
+      return true; // Default to showing if no match found (shouldn't happen due to first check)
     });
 
     return NextResponse.json(menus);
