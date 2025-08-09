@@ -475,6 +475,7 @@ export default function AppointmentsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[80px]">ID</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Setter</TableHead>
                     <TableHead>Service Type</TableHead>
@@ -488,12 +489,14 @@ export default function AppointmentsPage() {
                 <TableBody>
                   {filteredAppointments.map((appointment) => (
                     <TableRow key={appointment.id}>
+                      <TableCell className="text-muted-foreground">#{appointment.id}</TableCell>
                       <TableCell className="font-medium">
                         <div>
                           <div>{appointment.customer.name}</div>
                           <div className="text-sm text-muted-foreground">
                             {appointment.customer.phone}
                           </div>
+                          <span className="ml-2 text-xs text-muted-foreground sm:hidden">(ID: {appointment.id})</span>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -513,15 +516,10 @@ export default function AppointmentsPage() {
                             <MapPin className="h-3 w-3 mr-1" />
                             {appointment.appointmentPlace.address}
                           </div>
-                          {appointment.appointmentSetter && (
-                            <div className="text-xs mt-1">
-                              Set by: {appointment.appointmentSetter}
-                            </div>
-                          )}
                           {appointment.appointmentPlace.appointmentType.name.toLowerCase() === 'restaurant' &&
                             typeof appointment.numberOfTables === 'number' && (
                               <div className="text-xs mt-1">
-                                Tables: {appointment.numberOfTables}
+                                Reserved tables: {appointment.numberOfTables}
                               </div>
                             )}
                         </div>

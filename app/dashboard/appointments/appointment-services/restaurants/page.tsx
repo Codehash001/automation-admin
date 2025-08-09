@@ -20,7 +20,8 @@ const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || 'your
 interface RestaurantPlace {
   id: number;
   name: string;
-  specialistName?: string;
+  specialistName?: string; // legacy single value
+  specialistNames?: string[]; // new array field
   whatsappNo: string;
   status: 'ACTIVE' | 'INACTIVE';
   exactLocation: {
@@ -390,7 +391,6 @@ export default function RestaurantsPage() {
   // Filter places based on search term
   const filteredPlaces = places.filter((place: any) =>
     place.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (place.specialistName && place.specialistName.toLowerCase().includes(searchTerm.toLowerCase())) ||
     place.address.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -459,7 +459,6 @@ export default function RestaurantsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Restaurant Name</TableHead>
-                    <TableHead>Manager/Contact</TableHead>
                     <TableHead>Contact Info</TableHead>
                     <TableHead>Location</TableHead>
                     <TableHead>Table Size</TableHead>
@@ -472,16 +471,6 @@ export default function RestaurantsPage() {
                   {filteredPlaces.map((place) => (
                     <TableRow key={place.id}>
                       <TableCell className="font-medium">{place.name}</TableCell>
-                      <TableCell>
-                        {place.specialistName ? (
-                          <div className="flex items-center">
-                            <User className="h-4 w-4 mr-2 text-gray-500" />
-                            {place.specialistName}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400">Not specified</span>
-                        )}
-                      </TableCell>
                       <TableCell>
                         <div className="flex items-center">
                           <Phone className="h-4 w-4 mr-2 text-green-600" />
@@ -592,16 +581,6 @@ export default function RestaurantsPage() {
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       placeholder="Restaurant Name"
                       required
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="specialistName" className="text-sm font-medium">Manager/Contact Person</Label>
-                    <Input
-                      id="specialistName"
-                      value={formData.specialistName}
-                      onChange={(e) => setFormData({ ...formData, specialistName: e.target.value })}
-                      placeholder="Manager/Contact Person (Optional)"
                     />
                   </div>
 

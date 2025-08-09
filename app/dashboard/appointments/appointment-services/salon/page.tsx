@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 // Mapbox access token - you'll need to set this in your environment variables
 const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || 'your-mapbox-access-token-here';
@@ -20,7 +21,8 @@ const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || 'your
 interface SalonPlace {
   id: number;
   name: string;
-  specialistName?: string;
+  specialistName?: string; // legacy single value
+  specialistNames?: string[]; // new array field
   whatsappNo: string;
   status: 'ACTIVE' | 'INACTIVE';
   exactLocation: {
@@ -54,6 +56,11 @@ export default function SalonPage() {
   const [mapStyle, setMapStyle] = useState<string>('standard');
   const currentZoomRef = useRef<number>(13);
   let isDragging = false;
+
+  // Add-specialist dialog state
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [addSpecialistName, setAddSpecialistName] = useState('');
+  const [addTargetPlace, setAddTargetPlace] = useState<SalonPlace | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -411,9 +418,59 @@ export default function SalonPage() {
   // Filter places based on search term
   const filteredPlaces = places.filter((place: any) =>
     place.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (place.specialistName && place.specialistName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (
+      Array.isArray(place.specialistNames)
+        ? place.specialistNames.join(' ').toLowerCase().includes(searchTerm.toLowerCase())
+        : (place.specialistName && place.specialistName.toLowerCase().includes(searchTerm.toLowerCase()))
+    ) ||
     place.address.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Open add dialog
+  const openAddDialog = (place: SalonPlace) => {
+    setAddTargetPlace(place);
+    setAddSpecialistName('');
+    setIsAddDialogOpen(true);
+  };
+
+  // Save add dialog
+  const saveAddSpecialist = async () => {
+    const place = addTargetPlace;
+    if (!place) return;
+    const trimmed = addSpecialistName.trim();
+    if (!trimmed) return;
+
+    const current = Array.isArray(place.specialistNames)
+      ? place.specialistNames
+      : (place.specialistName ? [place.specialistName] : []);
+
+    const exists = current.some(s => s.toLowerCase() === trimmed.toLowerCase());
+    if (exists) {
+      toast({ title: 'Already exists', description: 'This specialist is already listed.' });
+      return;
+    }
+
+    const payload = { id: place.id, specialistNames: [...current, trimmed] };
+    try {
+      const res = await fetch('/api/appointments/appointment-places/salon', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to add specialist');
+      }
+      toast({ title: 'Specialist added' });
+      setIsAddDialogOpen(false);
+      setAddTargetPlace(null);
+      setAddSpecialistName('');
+      fetchPlaces();
+    } catch (e: any) {
+      console.error(e);
+      toast({ title: 'Error', description: e.message || 'Failed to add specialist', variant: 'destructive' });
+    }
+  };
 
   // Cleanup map on unmount
   useEffect(() => {
@@ -480,7 +537,7 @@ export default function SalonPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Salon Name</TableHead>
-                    <TableHead>Specialist</TableHead>
+                    <TableHead>Specialists</TableHead>
                     <TableHead>Contact Info</TableHead>
                     <TableHead>Location</TableHead>
                     <TableHead>Capacity</TableHead>
@@ -494,14 +551,17 @@ export default function SalonPage() {
                     <TableRow key={place.id}>
                       <TableCell className="font-medium">{place.name}</TableCell>
                       <TableCell>
-                        {place.specialistName ? (
-                          <div className="flex items-center">
-                            <User className="h-4 w-4 mr-2 text-gray-500" />
-                            {place.specialistName}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400">Not specified</span>
-                        )}
+                        <div className="text-sm text-muted-foreground space-y-1">
+                          {Array.isArray(place.specialistNames) && place.specialistNames.length > 0 ? (
+                            place.specialistNames.map((s, idx) => (
+                              <div key={idx}>{s}</div>
+                            ))
+                          ) : place.specialistName ? (
+                            <div>{place.specialistName}</div>
+                          ) : (
+                            <div>-</div>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center">
@@ -545,6 +605,18 @@ export default function SalonPage() {
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="outline" size="sm" className="h-7 px-2 gap-1" onClick={() => openAddDialog(place)}>
+                                  <Plus className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Add new specialist</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -830,6 +902,24 @@ export default function SalonPage() {
             >
               Delete
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Specialist Dialog */}
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add specialist</DialogTitle>
+            <DialogDescription>Add a new specialist/beautician for this salon.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <Label htmlFor="new-specialist">Name</Label>
+            <Input id="new-specialist" value={addSpecialistName} onChange={(e) => setAddSpecialistName(e.target.value)} placeholder="e.g., Sarah Ahmed" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
+            <Button onClick={saveAddSpecialist} disabled={!addSpecialistName.trim()}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+// Normalize specialists payload: accept string | string[] | undefined and return a clean string[]
+function normalizeSpecialists(input: unknown): string[] {
+  if (input == null) return [];
+  if (Array.isArray(input)) {
+    return input
+      .map((s) => (typeof s === "string" ? s.trim() : ""))
+      .filter((s) => s.length > 0);
+  }
+  if (typeof input === "string") {
+    const single = input.trim();
+    return single ? [single] : [];
+  }
+  return [];
+}
+
 // GET: Fetch appointment places by appointment type
 export async function GET(
   request: NextRequest,
@@ -149,7 +164,9 @@ export async function POST(
     const body = await request.json();
     const {
       name,
+      // Backward compatibility: accept either specialistName (string) or specialistNames (string[])
       specialistName,
+      specialistNames,
       whatsappNo,
       status = "ACTIVE",
       exactLocation = { lat: 0.0, lng: 0.0 },
@@ -204,12 +221,14 @@ export async function POST(
       data: {
         name: name.trim(),
         appointmentTypeId: appointmentType.id,
-        specialistName: specialistName?.trim() || null,
+        specialistNames: normalizeSpecialists(
+          typeof specialistNames !== 'undefined' ? specialistNames : specialistName
+        ),
         whatsappNo: whatsappNo.trim(),
         status: status.toUpperCase(),
         exactLocation: exactLocation,
         address: address.trim(),
-        numberOfAppointedPeople: parseInt(numberOfAppointedPeople) || 1,
+        numberOfAppointedPeople: Number.parseInt(String(numberOfAppointedPeople), 10) || 1,
       },
       include: {
         appointmentType: {
@@ -247,7 +266,9 @@ export async function PUT(
     const {
       id,
       name,
+      // Backward compatibility: accept either specialistName (string) or specialistNames (string[])
       specialistName,
+      specialistNames,
       whatsappNo,
       status,
       exactLocation,
@@ -284,7 +305,7 @@ export async function PUT(
     // Check if appointment place exists and belongs to this type
     const existingPlace = await prisma.appointmentPlace.findFirst({
       where: {
-        id: parseInt(id),
+        id: Number.parseInt(String(id), 10),
         appointmentTypeId: appointmentType.id,
       },
     });
@@ -307,7 +328,7 @@ export async function PUT(
         where: {
           name: trimmedName,
           appointmentTypeId: appointmentType.id,
-          id: { not: parseInt(id) },
+          id: { not: Number.parseInt(String(id), 10) },
         },
       });
 
@@ -321,8 +342,10 @@ export async function PUT(
       updateData.name = trimmedName;
     }
 
-    if (specialistName !== undefined) {
-      updateData.specialistName = specialistName?.trim() || null;
+    if (typeof specialistNames !== 'undefined' || typeof specialistName !== 'undefined') {
+      updateData.specialistNames = normalizeSpecialists(
+        typeof specialistNames !== 'undefined' ? specialistNames : specialistName
+      );
     }
 
     if (whatsappNo) {
@@ -342,12 +365,12 @@ export async function PUT(
     }
 
     if (numberOfAppointedPeople !== undefined) {
-      updateData.numberOfAppointedPeople = parseInt(numberOfAppointedPeople) || 1;
+      updateData.numberOfAppointedPeople = Number.parseInt(String(numberOfAppointedPeople), 10) || 1;
     }
 
     // Update the appointment place
     const updatedPlace = await prisma.appointmentPlace.update({
-      where: { id: parseInt(id) },
+      where: { id: Number.parseInt(String(id), 10) },
       data: updateData,
       include: {
         appointmentType: {
@@ -412,7 +435,7 @@ export async function DELETE(
     // Check if appointment place exists and belongs to this type
     const existingPlace = await prisma.appointmentPlace.findFirst({
       where: {
-        id: parseInt(id),
+        id: Number.parseInt(String(id), 10),
         appointmentTypeId: appointmentType.id,
       },
       include: {
@@ -443,7 +466,7 @@ export async function DELETE(
 
     // Delete the appointment place
     await prisma.appointmentPlace.delete({
-      where: { id: parseInt(id) },
+      where: { id: Number.parseInt(String(id), 10) },
     });
 
     return NextResponse.json(

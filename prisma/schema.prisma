@@ -362,7 +362,7 @@ model AppointmentPlace {
   name                    String // Name of the specific place/provider
   appointmentType         AppointmentType @relation(fields: [appointmentTypeId], references: [id])
   appointmentTypeId       Int
-  specialistName          String? // Optional specialist name
+  specialistNames         String[]        @default([]) // Zero or more specialists
   whatsappNo              String // WhatsApp number for the service provider
   status                  String          @default("ACTIVE") // ACTIVE, INACTIVE
   exactLocation           Json            @default("{\"lat\": 0.0, \"lng\": 0.0}")
