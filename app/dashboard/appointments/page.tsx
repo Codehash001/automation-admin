@@ -18,6 +18,7 @@ interface Appointment {
   status: string;
   numberOfTables?: number | null;
   appointmentSetter?: string | null;
+  specialistName?: string | null;
   customer: {
     id: number;
     name: string;
@@ -53,7 +54,6 @@ interface AppointmentType {
 interface AppointmentPlace {
   id: number;
   name: string;
-  specialistName: string | null;
   appointmentType: {
     id: number;
     name: string;
@@ -525,7 +525,7 @@ export default function AppointmentsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {appointment.appointmentPlace.specialistName || '-'}
+                        {appointment.specialistName || '-'}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center">
@@ -614,7 +614,6 @@ export default function AppointmentsPage() {
                   {filteredAppointmentPlaces.map((place) => (
                     <SelectItem key={place.id} value={place.id.toString()}>
                       {place.name} ({place.appointmentType.name})
-                      {place.specialistName && ` - ${place.specialistName}`}
                     </SelectItem>
                   ))}
                 </SelectContent>

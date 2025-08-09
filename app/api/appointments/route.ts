@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { customerId, appointmentPlaceId, appointmentDate, status, numberOfTables, appointmentSetter } = body;
+    const { customerId, appointmentPlaceId, appointmentDate, status, numberOfTables, appointmentSetter, specialistName } = body;
 
     // Validate required fields
     if (!customerId || !appointmentPlaceId || !appointmentDate) {
@@ -208,6 +208,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Normalize optional specialist name
+    const normalizedSpecialistName = typeof specialistName === 'string' ? specialistName.trim() : '';
+
     // Create the appointment
     const appointment = await prisma.appointment.create({
       data: {
@@ -216,6 +219,7 @@ export async function POST(request: NextRequest) {
         appointmentDate: parsedDate,
         status: status || "SCHEDULED",
         ...(appointmentSetter ? { appointmentSetter } : {}),
+        ...(normalizedSpecialistName ? { specialistName: normalizedSpecialistName } : {}),
         // numberOfTables is only relevant for Restaurant appointments
         ...(appointmentPlace.appointmentType?.name?.toLowerCase() === 'restaurant'
           ? (typeof numberOfTables === 'number' && Number.isFinite(numberOfTables) && numberOfTables > 0
