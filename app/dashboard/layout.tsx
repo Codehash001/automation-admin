@@ -149,10 +149,10 @@ function DashboardContent({
       icon: <Calendar size={18} />,
       resource: 'appointments',
       children: [
-        { name: 'Salon', href: '/dashboard/appointments/appointment-types', icon: <Scissors size={16} /> },
-        { name: 'Doctor', href: '/dashboard/appointments/appointment-types', icon: <Stethoscope size={16} /> },
-        { name: 'Legal', href: '/dashboard/appointments/appointment-types', icon: <Scale size={16} /> },
-        { name: 'Restaurants', href: '/dashboard/appointments/appointment-types', icon: <UtensilsCrossed size={16} /> },
+        { name: 'Salon', href: '/dashboard/appointments/appointment-services/salon', icon: <Scissors size={16} /> },
+        { name: 'Doctor', href: '/dashboard/appointments/appointment-services/doctor', icon: <Stethoscope size={16} /> },
+        { name: 'Legal', href: '/dashboard/appointments/appointment-services/legal', icon: <Scale size={16} /> },
+        { name: 'Restaurants', href: '/dashboard/appointments/appointment-services/restaurants', icon: <UtensilsCrossed size={16} /> },
       ],
     },
     {
