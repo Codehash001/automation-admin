@@ -16,6 +16,7 @@ interface Appointment {
   id: number;
   appointmentDate: string;
   status: string;
+  numberOfTables?: number | null;
   customer: {
     id: number;
     name: string;
@@ -68,9 +69,9 @@ export default function AppointmentsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
-  const [selectedCustomer, setSelectedCustomer] = useState<string>('');
-  const [selectedAppointmentType, setSelectedAppointmentType] = useState<string>('');
-  const [selectedStatus, setSelectedStatus] = useState<string>('');
+  const [selectedCustomer, setSelectedCustomer] = useState<string>('all');
+  const [selectedAppointmentType, setSelectedAppointmentType] = useState<string>('all');
+  const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [filteredAppointmentPlaces, setFilteredAppointmentPlaces] = useState<AppointmentPlace[]>([]);
   const { toast } = useToast();
 
@@ -78,16 +79,17 @@ export default function AppointmentsPage() {
     customerId: '',
     appointmentPlaceId: '',
     appointmentDate: '',
-    status: 'SCHEDULED',
+    status: 'PENDING',
+    numberOfTables: '', // only for Restaurant
   });
 
   // Fetch appointments
   const fetchAppointments = async () => {
     try {
       const params = new URLSearchParams();
-      if (selectedCustomer) params.append('customerId', selectedCustomer);
-      if (selectedAppointmentType) params.append('appointmentTypeId', selectedAppointmentType);
-      if (selectedStatus) params.append('status', selectedStatus);
+      if (selectedCustomer && selectedCustomer !== 'all') params.append('customerId', selectedCustomer);
+      if (selectedAppointmentType && selectedAppointmentType !== 'all') params.append('appointmentTypeId', selectedAppointmentType);
+      if (selectedStatus && selectedStatus !== 'all') params.append('status', selectedStatus);
       
       const response = await fetch(`/api/appointments?${params.toString()}`);
       if (!response.ok) throw new Error('Failed to fetch appointments');
@@ -172,7 +174,7 @@ export default function AppointmentsPage() {
 
   // Filter appointment places based on selected type
   useEffect(() => {
-    if (selectedAppointmentType) {
+    if (selectedAppointmentType && selectedAppointmentType !== 'all') {
       const filtered = appointmentPlaces.filter((place: any) => 
         place.appointmentType.id.toString() === selectedAppointmentType
       );
@@ -196,6 +198,11 @@ export default function AppointmentsPage() {
         appointmentPlaceId: appointment.appointmentPlace.id.toString(),
         appointmentDate: new Date(appointment.appointmentDate).toISOString().slice(0, 16),
         status: appointment.status,
+        numberOfTables:
+          appointment.appointmentPlace.appointmentType.name.toLowerCase() === 'restaurant' &&
+          typeof appointment.numberOfTables === 'number'
+            ? String(appointment.numberOfTables)
+            : '',
       });
     } else {
       setSelectedAppointment(null);
@@ -204,6 +211,7 @@ export default function AppointmentsPage() {
         appointmentPlaceId: '',
         appointmentDate: '',
         status: 'SCHEDULED',
+        numberOfTables: '',
       });
     }
     setIsDialogOpen(true);
@@ -217,6 +225,7 @@ export default function AppointmentsPage() {
       appointmentPlaceId: '',
       appointmentDate: '',
       status: 'SCHEDULED',
+      numberOfTables: '',
     });
   };
 
@@ -240,17 +249,38 @@ export default function AppointmentsPage() {
         ? { id: selectedAppointment.id, ...formData }
         : formData;
 
+      // Determine if selected place is a Restaurant
+      const selectedPlace = appointmentPlaces.find(
+        (p: any) => p.id.toString() === formData.appointmentPlaceId
+      );
+      const isRestaurant = selectedPlace?.appointmentType?.name?.toLowerCase() === 'restaurant';
+
+      const payload: any = {
+        ...body,
+        customerId: parseInt(formData.customerId),
+        appointmentPlaceId: parseInt(formData.appointmentPlaceId),
+        appointmentDate: new Date(formData.appointmentDate).toISOString(),
+      };
+
+      if (isRestaurant) {
+        if (formData.numberOfTables) {
+          const num = parseInt(formData.numberOfTables, 10);
+          if (!Number.isFinite(num) || num <= 0) {
+            throw new Error('Number of tables must be a positive integer');
+          }
+          payload.numberOfTables = num;
+        }
+      } else if (selectedAppointment) {
+        // For non-restaurant updates, explicitly clear if previously set
+        payload.numberOfTables = null;
+      }
+
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ...body,
-          customerId: parseInt(formData.customerId),
-          appointmentPlaceId: parseInt(formData.appointmentPlaceId),
-          appointmentDate: new Date(formData.appointmentDate).toISOString(),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -312,6 +342,8 @@ export default function AppointmentsPage() {
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
+      case 'pending':
+        return 'default';
       case 'scheduled':
         return 'default';
       case 'completed':
@@ -370,7 +402,7 @@ export default function AppointmentsPage() {
                   </div>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Customers</SelectItem>
+                  <SelectItem value="all">All Customers</SelectItem>
                   {customers.map((customer) => (
                     <SelectItem key={customer.id} value={customer.id.toString()}>
                       {customer.name}
@@ -391,7 +423,7 @@ export default function AppointmentsPage() {
                   </div>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Types</SelectItem>
+                  <SelectItem value="all">All Types</SelectItem>
                   {appointmentTypes.map((type) => (
                     <SelectItem key={type.id} value={type.id.toString()}>
                       {type.name}
@@ -412,7 +444,8 @@ export default function AppointmentsPage() {
                   </div>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Status</SelectItem>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="PENDING">Pending</SelectItem>
                   <SelectItem value="SCHEDULED">Scheduled</SelectItem>
                   <SelectItem value="COMPLETED">Completed</SelectItem>
                   <SelectItem value="CANCELLED">Cancelled</SelectItem>
@@ -466,6 +499,12 @@ export default function AppointmentsPage() {
                             <MapPin className="h-3 w-3 mr-1" />
                             {appointment.appointmentPlace.address}
                           </div>
+                          {appointment.appointmentPlace.appointmentType.name.toLowerCase() === 'restaurant' &&
+                            typeof appointment.numberOfTables === 'number' && (
+                              <div className="text-xs mt-1">
+                                Tables: {appointment.numberOfTables}
+                              </div>
+                            )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -564,6 +603,26 @@ export default function AppointmentsPage() {
                 </SelectContent>
               </Select>
             </div>
+            {(() => {
+              const place = appointmentPlaces.find(
+                (p: any) => p.id.toString() === formData.appointmentPlaceId
+              );
+              const isRestaurant = place?.appointmentType?.name?.toLowerCase() === 'restaurant';
+              if (!isRestaurant) return null;
+              return (
+                <div className="space-y-2">
+                  <Label htmlFor="numberOfTables">Number of Tables</Label>
+                  <Input
+                    id="numberOfTables"
+                    type="number"
+                    min={1}
+                    value={formData.numberOfTables}
+                    onChange={(e) => setFormData({ ...formData, numberOfTables: e.target.value })}
+                    placeholder="Enter number of tables"
+                  />
+                </div>
+              );
+            })()}
             <div className="space-y-2">
               <Label htmlFor="appointmentDate">Date & Time *</Label>
               <Input
@@ -584,6 +643,7 @@ export default function AppointmentsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="PENDING">Pending</SelectItem>
                   <SelectItem value="SCHEDULED">Scheduled</SelectItem>
                   <SelectItem value="COMPLETED">Completed</SelectItem>
                   <SelectItem value="CANCELLED">Cancelled</SelectItem>

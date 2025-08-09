@@ -382,7 +382,8 @@ model Appointment {
   appointmentPlace   AppointmentPlace @relation(fields: [appointmentPlaceId], references: [id])
   appointmentPlaceId Int
   appointmentDate    DateTime
-  status             String           @default("SCHEDULED") // SCHEDULED, COMPLETED, CANCELLED
+  status             String           @default("SCHEDULED") // PENDING, SCHEDULED, COMPLETED, CANCELLED
+  numberOfTables     Int?             // Optional: only applicable for Restaurant reservations
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 }

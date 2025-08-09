@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { customerId, appointmentPlaceId, appointmentDate, status } = body;
+    const { customerId, appointmentPlaceId, appointmentDate, status, numberOfTables } = body;
 
     // Validate required fields
     if (!customerId || !appointmentPlaceId || !appointmentDate) {
@@ -145,6 +145,9 @@ export async function POST(request: NextRequest) {
     // Verify appointment place exists
     const appointmentPlace = await prisma.appointmentPlace.findUnique({
       where: { id: parseInt(appointmentPlaceId) },
+      include: {
+        appointmentType: { select: { id: true, name: true } },
+      },
     });
 
     if (!appointmentPlace) {
@@ -169,6 +172,12 @@ export async function POST(request: NextRequest) {
         appointmentPlaceId: parseInt(appointmentPlaceId),
         appointmentDate: new Date(appointmentDate),
         status: status || "SCHEDULED",
+        // numberOfTables is only relevant for Restaurant appointments
+        ...(appointmentPlace.appointmentType?.name?.toLowerCase() === 'restaurant'
+          ? (typeof numberOfTables === 'number' && Number.isFinite(numberOfTables) && numberOfTables > 0
+              ? { numberOfTables: Math.floor(numberOfTables) }
+              : {})
+          : {}),
       },
       include: {
         customer: {
@@ -205,7 +214,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, customerId, appointmentPlaceId, appointmentDate, status } = body;
+    const { id, customerId, appointmentPlaceId, appointmentDate, status, numberOfTables } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -217,6 +226,9 @@ export async function PUT(request: NextRequest) {
     // Check if appointment exists
     const existingAppointment = await prisma.appointment.findUnique({
       where: { id: parseInt(id) },
+      include: {
+        appointmentPlace: { include: { appointmentType: { select: { name: true } } } },
+      },
     });
 
     if (!existingAppointment) {
@@ -249,6 +261,7 @@ export async function PUT(request: NextRequest) {
       // Verify appointment place exists and is active
       const appointmentPlace = await prisma.appointmentPlace.findUnique({
         where: { id: parseInt(appointmentPlaceId) },
+        include: { appointmentType: { select: { name: true } } },
       });
 
       if (!appointmentPlace) {
@@ -274,6 +287,36 @@ export async function PUT(request: NextRequest) {
 
     if (status) {
       updateData.status = status;
+    }
+
+    // Handle numberOfTables updates only for Restaurant appointments
+    const effectivePlaceType = appointmentPlaceId
+      ? (await prisma.appointmentPlace.findUnique({
+          where: { id: parseInt(appointmentPlaceId) },
+          select: { appointmentType: { select: { name: true } } },
+        }))?.appointmentType?.name?.toLowerCase()
+      : existingAppointment.appointmentPlace.appointmentType?.name?.toLowerCase();
+
+    if (typeof numberOfTables !== 'undefined') {
+      if (effectivePlaceType === 'restaurant') {
+        if (
+          typeof numberOfTables === 'number' &&
+          Number.isFinite(numberOfTables) &&
+          numberOfTables > 0
+        ) {
+          updateData.numberOfTables = Math.floor(numberOfTables);
+        } else if (numberOfTables === null) {
+          // Allow clearing
+          updateData.numberOfTables = null;
+        } else {
+          return NextResponse.json(
+            { error: 'numberOfTables must be a positive integer for restaurant appointments' },
+            { status: 400 }
+          );
+        }
+      } else {
+        // Ignore numberOfTables for non-restaurant appointments
+      }
     }
 
     // Update the appointment
