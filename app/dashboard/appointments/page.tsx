@@ -476,6 +476,7 @@ export default function AppointmentsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Customer</TableHead>
+                    <TableHead>Setter</TableHead>
                     <TableHead>Service Type</TableHead>
                     <TableHead>Place</TableHead>
                     <TableHead>Specialist</TableHead>
@@ -494,6 +495,11 @@ export default function AppointmentsPage() {
                             {appointment.customer.phone}
                           </div>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {appointment.appointmentSetter && appointment.appointmentSetter.trim().length > 0
+                          ? appointment.appointmentSetter
+                          : '-'}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">

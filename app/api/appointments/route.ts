@@ -130,9 +130,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Normalize IDs in case they are sent as strings
+    const customerIdNum = Number.parseInt(String(customerId), 10);
+    const appointmentPlaceIdNum = Number.parseInt(String(appointmentPlaceId), 10);
+    if (!Number.isFinite(customerIdNum) || Number.isNaN(customerIdNum)) {
+      return NextResponse.json({ error: "customerId must be a valid integer" }, { status: 400 });
+    }
+    if (!Number.isFinite(appointmentPlaceIdNum) || Number.isNaN(appointmentPlaceIdNum)) {
+      return NextResponse.json({ error: "appointmentPlaceId must be a valid integer" }, { status: 400 });
+    }
+
+    // Validate appointmentDate
+    const parsedDate = new Date(appointmentDate);
+    if (Number.isNaN(parsedDate.getTime())) {
+      return NextResponse.json(
+        { error: "Invalid appointmentDate. Use ISO 8601, e.g. 2025-08-10T14:00:00Z or 2025-08-10T14:00:00+00:00" },
+        { status: 400 }
+      );
+    }
+
     // Verify customer exists
     const customer = await prisma.customer.findUnique({
-      where: { id: parseInt(customerId) },
+      where: { id: customerIdNum },
     });
 
     if (!customer) {
@@ -144,7 +163,7 @@ export async function POST(request: NextRequest) {
 
     // Verify appointment place exists
     const appointmentPlace = await prisma.appointmentPlace.findUnique({
-      where: { id: parseInt(appointmentPlaceId) },
+      where: { id: appointmentPlaceIdNum },
       include: {
         appointmentType: { select: { id: true, name: true } },
       },
@@ -168,9 +187,9 @@ export async function POST(request: NextRequest) {
     // Create the appointment
     const appointment = await prisma.appointment.create({
       data: {
-        customerId: parseInt(customerId),
-        appointmentPlaceId: parseInt(appointmentPlaceId),
-        appointmentDate: new Date(appointmentDate),
+        customerId: customerIdNum,
+        appointmentPlaceId: appointmentPlaceIdNum,
+        appointmentDate: parsedDate,
         status: status || "SCHEDULED",
         ...(appointmentSetter ? { appointmentSetter } : {}),
         // numberOfTables is only relevant for Restaurant appointments
@@ -219,16 +238,21 @@ export async function PUT(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json(
-        { error: "Appointment ID is required" },
+        { error: "ID is required" },
         { status: 400 }
       );
     }
 
-    // Check if appointment exists
+    // Normalize main ID
+    const idNum = Number.parseInt(String(id), 10);
+    if (!Number.isFinite(idNum) || Number.isNaN(idNum)) {
+      return NextResponse.json({ error: "id must be a valid integer" }, { status: 400 });
+    }
+
     const existingAppointment = await prisma.appointment.findUnique({
-      where: { id: parseInt(id) },
+      where: { id: idNum },
       include: {
-        appointmentPlace: { include: { appointmentType: { select: { name: true } } } },
+        appointmentPlace: { include: { appointmentType: { select: { id: true, name: true } } } },
       },
     });
 
@@ -242,44 +266,20 @@ export async function PUT(request: NextRequest) {
     // Prepare update data
     const updateData: any = {};
 
-    if (customerId) {
-      // Verify customer exists
-      const customer = await prisma.customer.findUnique({
-        where: { id: parseInt(customerId) },
-      });
-
-      if (!customer) {
-        return NextResponse.json(
-          { error: "Customer not found" },
-          { status: 404 }
-        );
+    if (typeof customerId !== 'undefined') {
+      const cid = Number.parseInt(String(customerId), 10);
+      if (!Number.isFinite(cid) || Number.isNaN(cid)) {
+        return NextResponse.json({ error: "customerId must be a valid integer" }, { status: 400 });
       }
-
-      updateData.customerId = parseInt(customerId);
+      updateData.customerId = cid;
     }
 
-    if (appointmentPlaceId) {
-      // Verify appointment place exists and is active
-      const appointmentPlace = await prisma.appointmentPlace.findUnique({
-        where: { id: parseInt(appointmentPlaceId) },
-        include: { appointmentType: { select: { name: true } } },
-      });
-
-      if (!appointmentPlace) {
-        return NextResponse.json(
-          { error: "Appointment place not found" },
-          { status: 404 }
-        );
+    if (typeof appointmentPlaceId !== 'undefined') {
+      const apid = Number.parseInt(String(appointmentPlaceId), 10);
+      if (!Number.isFinite(apid) || Number.isNaN(apid)) {
+        return NextResponse.json({ error: "appointmentPlaceId must be a valid integer" }, { status: 400 });
       }
-
-      if (appointmentPlace.status !== "ACTIVE") {
-        return NextResponse.json(
-          { error: "Appointment place is not active" },
-          { status: 400 }
-        );
-      }
-
-      updateData.appointmentPlaceId = parseInt(appointmentPlaceId);
+      updateData.appointmentPlaceId = apid;
     }
 
     if (appointmentDate) {
@@ -330,7 +330,7 @@ export async function PUT(request: NextRequest) {
 
     // Update the appointment
     const updatedAppointment = await prisma.appointment.update({
-      where: { id: parseInt(id) },
+      where: { id: idNum },
       data: updateData,
       include: {
         customer: {
