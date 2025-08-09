@@ -1,6 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+// Human-readable date formatter: e.g. "08th OCT 2025 - 09.30 PM"
+function formatAppointmentDate(dateInput: string | Date): string {
+  const d = new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return "Invalid Date";
+  const day = d.getDate();
+  const month = d.toLocaleString("en-US", { month: "short" }).toUpperCase();
+  const year = d.getFullYear();
+  const getSuffix = (n: number) => {
+    const j = n % 10, k = n % 100;
+    if (j === 1 && k !== 11) return "st";
+    if (j === 2 && k !== 12) return "nd";
+    if (j === 3 && k !== 13) return "rd";
+    return "th";
+  };
+  let hours = d.getHours();
+  const minutes = d.getMinutes();
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+  const hh = String(hours).padStart(2, "0");
+  const mm = String(minutes).padStart(2, "0");
+  return `${String(day).padStart(2, "0")}${getSuffix(day)} ${month} ${year} - ${hh}.${mm} ${ampm}`;
+}
+
 // GET: Fetch appointments with optional filters
 export async function GET(request: NextRequest) {
   try {
@@ -220,7 +244,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json(appointment, { status: 201 });
+    return NextResponse.json({
+      ...appointment,
+      appointmentDateFormatted: formatAppointmentDate(appointment.appointmentDate as any),
+    }, { status: 201 });
   } catch (error) {
     console.error("Error creating appointment:", error);
     return NextResponse.json(
