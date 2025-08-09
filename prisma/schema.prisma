@@ -384,6 +384,7 @@ model Appointment {
   appointmentDate    DateTime
   status             String           @default("SCHEDULED") // PENDING, SCHEDULED, COMPLETED, CANCELLED
   numberOfTables     Int?             // Optional: only applicable for Restaurant reservations
+  appointmentSetter  String?          // Optional: name/identifier of who set the appointment
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 }

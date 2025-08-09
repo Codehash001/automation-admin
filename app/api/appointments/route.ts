@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { customerId, appointmentPlaceId, appointmentDate, status, numberOfTables } = body;
+    const { customerId, appointmentPlaceId, appointmentDate, status, numberOfTables, appointmentSetter } = body;
 
     // Validate required fields
     if (!customerId || !appointmentPlaceId || !appointmentDate) {
@@ -172,6 +172,7 @@ export async function POST(request: NextRequest) {
         appointmentPlaceId: parseInt(appointmentPlaceId),
         appointmentDate: new Date(appointmentDate),
         status: status || "SCHEDULED",
+        ...(appointmentSetter ? { appointmentSetter } : {}),
         // numberOfTables is only relevant for Restaurant appointments
         ...(appointmentPlace.appointmentType?.name?.toLowerCase() === 'restaurant'
           ? (typeof numberOfTables === 'number' && Number.isFinite(numberOfTables) && numberOfTables > 0
@@ -214,7 +215,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, customerId, appointmentPlaceId, appointmentDate, status, numberOfTables } = body;
+    const { id, customerId, appointmentPlaceId, appointmentDate, status, numberOfTables, appointmentSetter } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -287,6 +288,14 @@ export async function PUT(request: NextRequest) {
 
     if (status) {
       updateData.status = status;
+    }
+
+    if (typeof appointmentSetter !== 'undefined') {
+      if (appointmentSetter === null || appointmentSetter === '') {
+        updateData.appointmentSetter = null;
+      } else {
+        updateData.appointmentSetter = String(appointmentSetter);
+      }
     }
 
     // Handle numberOfTables updates only for Restaurant appointments

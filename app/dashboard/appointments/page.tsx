@@ -17,6 +17,7 @@ interface Appointment {
   appointmentDate: string;
   status: string;
   numberOfTables?: number | null;
+  appointmentSetter?: string | null;
   customer: {
     id: number;
     name: string;
@@ -81,6 +82,7 @@ export default function AppointmentsPage() {
     appointmentDate: '',
     status: 'PENDING',
     numberOfTables: '', // only for Restaurant
+    appointmentSetter: '',
   });
 
   // Fetch appointments
@@ -203,6 +205,7 @@ export default function AppointmentsPage() {
           typeof appointment.numberOfTables === 'number'
             ? String(appointment.numberOfTables)
             : '',
+        appointmentSetter: appointment.appointmentSetter || '',
       });
     } else {
       setSelectedAppointment(null);
@@ -212,6 +215,7 @@ export default function AppointmentsPage() {
         appointmentDate: '',
         status: 'SCHEDULED',
         numberOfTables: '',
+        appointmentSetter: '',
       });
     }
     setIsDialogOpen(true);
@@ -226,6 +230,7 @@ export default function AppointmentsPage() {
       appointmentDate: '',
       status: 'SCHEDULED',
       numberOfTables: '',
+      appointmentSetter: '',
     });
   };
 
@@ -260,6 +265,9 @@ export default function AppointmentsPage() {
         customerId: parseInt(formData.customerId),
         appointmentPlaceId: parseInt(formData.appointmentPlaceId),
         appointmentDate: new Date(formData.appointmentDate).toISOString(),
+        ...(formData.appointmentSetter
+          ? { appointmentSetter: formData.appointmentSetter.trim() }
+          : selectedAppointment ? { appointmentSetter: '' } : {}),
       };
 
       if (isRestaurant) {
@@ -499,6 +507,11 @@ export default function AppointmentsPage() {
                             <MapPin className="h-3 w-3 mr-1" />
                             {appointment.appointmentPlace.address}
                           </div>
+                          {appointment.appointmentSetter && (
+                            <div className="text-xs mt-1">
+                              Set by: {appointment.appointmentSetter}
+                            </div>
+                          )}
                           {appointment.appointmentPlace.appointmentType.name.toLowerCase() === 'restaurant' &&
                             typeof appointment.numberOfTables === 'number' && (
                               <div className="text-xs mt-1">
@@ -631,6 +644,16 @@ export default function AppointmentsPage() {
                 value={formData.appointmentDate}
                 onChange={(e) => setFormData({ ...formData, appointmentDate: e.target.value })}
                 required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="appointmentSetter">Appointment Setter</Label>
+              <Input
+                id="appointmentSetter"
+                type="text"
+                value={formData.appointmentSetter}
+                onChange={(e) => setFormData({ ...formData, appointmentSetter: e.target.value })}
+                placeholder="Enter the name of the person who set this appointment"
               />
             </div>
             <div className="space-y-2">
