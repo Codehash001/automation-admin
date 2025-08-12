@@ -236,6 +236,7 @@ enum OrderStatus {
 enum PaymentMethod {
   COD
   POS
+  ANY
 }
 
 enum OutletStatus {

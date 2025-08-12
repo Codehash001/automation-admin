@@ -71,7 +71,11 @@ function parseItems(textItems: string | string[]) {
 }
 
 // Calculate order totals
-async function calculateTotals(items: Array<{ price: number; quantity: number }>, outletId: number) {
+async function calculateTotals(
+  items: Array<{ price: number; quantity: number }>,
+  outletId: number,
+  orderType: string
+) {
   // Get the outlet with its additional prices
   const outlet = await prisma.outlet.findUnique({
     where: { id: outletId },
@@ -109,18 +113,24 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
     let amount = 0;
     
     if (price.type === 'percentage') {
-      amount = subtotal * price.value.toNumber() / 100;
-      
-      // Check if this is VAT (5%)
-      if (price.name.toLowerCase().includes('vat')) {
-        // Calculate VAT based on the sum of service fee and delivery fee
+      const lower = price.name.toLowerCase();
+      // Delivery fee (percentage)
+      if (lower.includes('delivery')) {
+        if (orderType === 'Delivery') {
+          amount = subtotal * price.value.toNumber() / 100;
+          deliveryFee = parseFloat(amount.toFixed(2));
+        } else {
+          amount = 0;
+        }
+      } else if (lower.includes('vat')) {
+        // VAT based on the sum of service fee and delivery fee
         amount = (serviceFee + deliveryFee) * price.value.toNumber() / 100;
         vat = parseFloat(amount.toFixed(2));
-      } 
-      // Check if this is the service fee
-      else if (price.name.toLowerCase().includes('service')) {
+      } else if (lower.includes('service')) {
+        amount = subtotal * price.value.toNumber() / 100;
         serviceFee = parseFloat(amount.toFixed(2));
       } else {
+        amount = subtotal * price.value.toNumber() / 100;
         fees.push({
           name: price.name,
           amount: parseFloat(amount.toFixed(2)),
@@ -134,7 +144,12 @@ async function calculateTotals(items: Array<{ price: number; quantity: number }>
       
       // Check if this is a delivery fee
       if (price.name.toLowerCase().includes('delivery')) {
-        deliveryFee = parseFloat(amount.toFixed(2));
+        if (orderType === 'Delivery') {
+          deliveryFee = parseFloat(amount.toFixed(2));
+        } else {
+          amount = 0; // do not apply delivery fee for non-Delivery orders
+          deliveryFee = 0;
+        }
       }
       // Check if this is the service fee
       else if (price.name.toLowerCase().includes('service')) {
@@ -304,13 +319,43 @@ export async function POST(request: Request) {
 
     console.log('[ManyChats] Mapped order items:', JSON.stringify(orderItems, null, 2));
 
+    // Resolve payment method: optional for Self Pick-up, required for Delivery
+    const orderTypeLower = String(orderType || '').toLowerCase();
+    const isSelfPickup = orderTypeLower.includes('self'); // covers 'Self Pick-up'
+
+    // Normalize to uppercase when provided
+    let resolvedPaymentMethod = typeof paymentMethod === 'string' ? paymentMethod.toUpperCase() : paymentMethod;
+
+    if ((!resolvedPaymentMethod || resolvedPaymentMethod === '') && isSelfPickup) {
+      // Default to ANY for self pick-up when not provided
+      resolvedPaymentMethod = 'ANY';
+    }
+
+    if ((!resolvedPaymentMethod || resolvedPaymentMethod === '') && !isSelfPickup) {
+      // For non self-pickup (e.g., Delivery), payment method is required
+      return NextResponse.json(
+        { error: 'paymentMethod is required for this order type' },
+        { status: 400 }
+      );
+    }
+
+    // Validate against allowed enum values to avoid Prisma enum errors
+    const allowedPaymentMethods = ['COD', 'POS', 'ANY'];
+    if (!allowedPaymentMethods.includes(resolvedPaymentMethod)) {
+      return NextResponse.json(
+        { error: `Invalid paymentMethod. Allowed values: ${allowedPaymentMethods.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
     // Calculate totals
     const { subtotal, serviceFee, deliveryFee, vat, total, fees } = await calculateTotals(
       orderItems.map((item: any) => ({
         price: item.price,
         quantity: item.quantity
       })),
-      parseInt(outletId)
+      parseInt(outletId),
+      orderType
     );
 
     console.log('[ManyChats] Starting database transaction');
@@ -329,7 +374,7 @@ export async function POST(request: Request) {
           deliveryAddress,
           deliveryLocation,
           buildingType,
-          paymentMethod,
+          paymentMethod: resolvedPaymentMethod,
           note: note || '',
           status: 'PENDING',
           subtotal,

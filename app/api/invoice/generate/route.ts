@@ -196,32 +196,55 @@ export async function POST(request: Request) {
     );
 
     // Calculate additional fees
-    const fees = additionalPrices.map((price: any) => {
+    // Pass 1: compute base fees (exclude VAT/TAX here to avoid self-reference)
+    const baseFees = additionalPrices.map((price: any) => {
+      const nameLower = String(price.name || '').toLowerCase();
       let amount = 0;
       
-      switch(price.name.toLowerCase()) {
-        case 'delivery':
-          amount = orderType === 'Delivery' ? Number(price.value) : 0;
-          break;
-        case 'vat':
-        case 'tax':
-          // Calculate VAT based on the sum of service fee and additional fee
-          const serviceFee = fees.find(f => f.name.toLowerCase() === 'service_fee')?.amount || 0;
-          const deliveryFee = fees.find(f => f.name.toLowerCase() === 'delivery_fee')?.amount || 0;
-          amount = Number((((serviceFee + deliveryFee) * Number(price.value)) / 100).toFixed(2));
-          break;
-        default:
-          amount = Number(price.value);
+      if (nameLower.includes('delivery')) {
+        amount = orderType === 'Delivery' ? Number(price.value) : 0;
+      } else if (nameLower.includes('vat') || nameLower.includes('tax')) {
+        // handled in pass 2
+        amount = 0;
+      } else if (nameLower.includes('service')) {
+        amount = Number(price.value);
+      } else {
+        amount = Number(price.value);
       }
       
       return {
         id: price.id,
         name: price.name,
-        amount,
+        amount: Number(isNaN(amount) ? 0 : amount),
         type: price.type,
-        applicable: amount > 0
+        applicable: Number(isNaN(amount) ? 0 : amount) > 0
       };
     });
+
+    // Gather values needed for VAT/TAX calculation
+    const serviceFeeAmount = baseFees.find((f: any) => String(f.name || '').toLowerCase().includes('service'))?.amount || 0;
+    const deliveryFeeAmount = baseFees.find((f: any) => String(f.name || '').toLowerCase().includes('delivery'))?.amount || 0;
+
+    // Pass 2: compute VAT/TAX based on base fee amounts
+    const vatFees = additionalPrices
+      .filter((price: any) => {
+        const nameLower = String(price.name || '').toLowerCase();
+        return nameLower.includes('vat') || nameLower.includes('tax');
+      })
+      .map((price: any) => {
+        const percentage = Number(price.value) || 0;
+        const taxableBase = serviceFeeAmount + deliveryFeeAmount;
+        const amount = Number(((taxableBase * percentage) / 100).toFixed(2));
+        return {
+          id: price.id,
+          name: price.name,
+          amount,
+          type: price.type,
+          applicable: amount > 0
+        };
+      });
+
+    const fees = [...baseFees, ...vatFees];
 
     const totalFees = Number(
       fees

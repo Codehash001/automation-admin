@@ -195,10 +195,15 @@ export default function AppointmentsPage() {
   const handleOpenDialog = (appointment: Appointment | null = null) => {
     if (appointment) {
       setSelectedAppointment(appointment);
+      // Convert stored UTC to a local string that displays the same wall-clock as UTC in datetime-local
+      const d = new Date(appointment.appointmentDate);
+      const tzOffsetMin = d.getTimezoneOffset();
+      const localForInput = new Date(d.getTime() - tzOffsetMin * 60000).toISOString().slice(0, 16);
       setFormData({
         customerId: appointment.customer.id.toString(),
         appointmentPlaceId: appointment.appointmentPlace.id.toString(),
-        appointmentDate: new Date(appointment.appointmentDate).toISOString().slice(0, 16),
+        // Adjusted so the input shows the exact UTC time stored in DB, without local TZ shift
+        appointmentDate: localForInput,
         status: appointment.status,
         numberOfTables:
           appointment.appointmentPlace.appointmentType.name.toLowerCase() === 'restaurant' &&
@@ -344,14 +349,11 @@ export default function AppointmentsPage() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
-  };
-
+  // Color-code status via Badge variants
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'pending':
-        return 'default';
+        return 'outline';
       case 'scheduled':
         return 'default';
       case 'completed':
@@ -360,6 +362,26 @@ export default function AppointmentsPage() {
         return 'destructive';
       default:
         return 'outline';
+    }
+  };
+
+  // Show exactly what DB stores but in 12-hour format with AM/PM (UTC)
+  const formatDateUTCExact12h = (dateInput: string | Date) => {
+    try {
+      const d = new Date(dateInput);
+      const Y = d.getUTCFullYear();
+      const M = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const D = String(d.getUTCDate()).padStart(2, '0');
+      let h = d.getUTCHours();
+      const m = String(d.getUTCMinutes()).padStart(2, '0');
+      const s = String(d.getUTCSeconds()).padStart(2, '0');
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12;
+      if (h === 0) h = 12;
+      const hh = String(h).padStart(2, '0');
+      return `${Y}-${M}-${D} ${hh}:${m}:${s} ${ampm}`;
+    } catch {
+      return String(dateInput);
     }
   };
 
@@ -530,7 +552,7 @@ export default function AppointmentsPage() {
                       <TableCell>
                         <div className="flex items-center">
                           <Calendar className="h-4 w-4 mr-2" />
-                          {formatDate(appointment.appointmentDate)}
+                          {formatDateUTCExact12h(appointment.appointmentDate)}
                         </div>
                       </TableCell>
                       <TableCell>

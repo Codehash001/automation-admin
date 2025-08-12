@@ -70,7 +70,8 @@ export async function GET(request: Request) {
         },
         select: {
           id: true,
-          whatsappNo: true
+          whatsappNo: true,
+          exactLocation: true
         }
       });
 
@@ -86,9 +87,16 @@ export async function GET(request: Request) {
         ? outlet.whatsappNo 
         : `+${outlet.whatsappNo}`;
 
+      // Extract lat/lng from exactLocation if present
+      const loc: any = outlet.exactLocation || {};
+      const lat = typeof loc.lat === 'string' ? parseFloat(loc.lat) : loc.lat;
+      const lng = typeof loc.lng === 'string' ? parseFloat(loc.lng) : loc.lng;
+
       return NextResponse.json({ 
         id: outlet.id,
-        whatsappNo: formattedWhatsappNo 
+        whatsappNo: formattedWhatsappNo,
+        lat: typeof lat === 'number' && !isNaN(lat) ? lat : null,
+        lng: typeof lng === 'number' && !isNaN(lng) ? lng : null
       });
     }
 
