@@ -87,16 +87,16 @@ export async function GET(request: Request) {
         ? outlet.whatsappNo 
         : `+${outlet.whatsappNo}`;
 
-      // Extract lat/lng from exactLocation if present
+      // Extract lat/lng and convert to strings for response
       const loc: any = outlet.exactLocation || {};
-      const lat = typeof loc.lat === 'string' ? parseFloat(loc.lat) : loc.lat;
-      const lng = typeof loc.lng === 'string' ? parseFloat(loc.lng) : loc.lng;
+      const latStr = loc?.lat !== undefined && loc?.lat !== null ? String(loc.lat) : '';
+      const lngStr = loc?.lng !== undefined && loc?.lng !== null ? String(loc.lng) : '';
 
       return NextResponse.json({ 
         id: outlet.id,
         whatsappNo: formattedWhatsappNo,
-        lat: typeof lat === 'number' && !isNaN(lat) ? lat : null,
-        lng: typeof lng === 'number' && !isNaN(lng) ? lng : null
+        lat: latStr,
+        lng: lngStr
       });
     }
 
