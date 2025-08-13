@@ -73,130 +73,78 @@ function parseItems(textItems: string | string[]) {
 // Calculate order totals
 async function calculateTotals(
   items: Array<{ price: number; quantity: number }>,
-  outletId: number,
+  additionalPrices: any[],
   orderType: string
 ) {
-  // Get the outlet with its additional prices
-  const outlet = await prisma.outlet.findUnique({
-    where: { id: outletId },
-    include: {
-      additionalPrices: {
-        where: { isActive: true }
-      },
-      emirates: true
-    }
-  });
-
-  if (!outlet) {
-    throw new Error('Outlet not found');
-  }
-
   // Calculate subtotal
   const subtotal = items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
 
-  // Initialize fees and charges
-  const fees: Array<{
-    name: string;
-    amount: number;
-    type: 'fixed' | 'percentage';
-    rate?: number;
-    appliedTo?: 'subtotal' | 'total';
-  }> = [];
-
   let serviceFee = 0;
-  let vat = 0;
   let deliveryFee = 0;
+  let vat = 0;
+  const fees: Array<{ name: string; amount: number; type: 'fixed' | 'percentage'; rate?: number }> = [];
+  const vatRates: number[] = [];
+
   let total = subtotal;
 
   // Process each additional price
-  for (const price of outlet.additionalPrices) {
+  for (const price of additionalPrices) {
+    const nameLower = String(price.name || '').toLowerCase();
     let amount = 0;
-    
-    if (price.type === 'percentage') {
-      const lower = price.name.toLowerCase();
-      // Delivery fee (percentage)
-      if (lower.includes('delivery')) {
-        if (orderType === 'Delivery') {
-          amount = subtotal * price.value.toNumber() / 100;
-          deliveryFee = parseFloat(amount.toFixed(2));
-        } else {
-          amount = 0;
-        }
-      } else if (lower.includes('vat')) {
-        // VAT based on the sum of service fee and delivery fee
-        amount = (serviceFee + deliveryFee) * price.value.toNumber() / 100;
-        vat = parseFloat(amount.toFixed(2));
-      } else if (lower.includes('service')) {
-        amount = subtotal * price.value.toNumber() / 100;
-        serviceFee = parseFloat(amount.toFixed(2));
-      } else {
-        amount = subtotal * price.value.toNumber() / 100;
-        fees.push({
-          name: price.name,
-          amount: parseFloat(amount.toFixed(2)),
-          type: 'percentage',
-          rate: price.value.toNumber(),
-          appliedTo: 'subtotal'
-        });
+
+    // Collect VAT/TAX percentage rates; compute after other fees
+    if (nameLower.includes('vat') || nameLower.includes('tax')) {
+      if (price.type === 'percentage' && Number.isFinite(Number(price.value))) {
+        vatRates.push(Number(price.value));
       }
+      continue; // do not compute now; compute after fees base is known
+    }
+
+    // Apply Delivery fee only for Delivery orders
+    if (nameLower.includes('delivery') && String(orderType).toLowerCase() !== 'delivery') {
+      amount = 0;
+    } else if (price.type === 'percentage') {
+      // Percentage fees apply on subtotal only, NOT including any other fees
+      amount = subtotal * (Number(price.value) / 100);
     } else {
-      amount = price.value.toNumber();
-      
-      // Check if this is a delivery fee
-      if (price.name.toLowerCase().includes('delivery')) {
-        if (orderType === 'Delivery') {
-          deliveryFee = parseFloat(amount.toFixed(2));
-        } else {
-          amount = 0; // do not apply delivery fee for non-Delivery orders
-          deliveryFee = 0;
-        }
-      }
-      // Check if this is the service fee
-      else if (price.name.toLowerCase().includes('service')) {
-        serviceFee = parseFloat(amount.toFixed(2));
-      } else {
-        fees.push({
-          name: price.name,
-          amount: parseFloat(amount.toFixed(2)),
-          type: 'fixed',
-          appliedTo: 'subtotal'
-        });
-      }
+      // Fixed fees
+      amount = Number(price.value);
     }
-    
-    // Add to total
-    total += amount;
+
+    // Add to total and track by type
+    if (amount > 0) {
+      total += amount;
+    }
+
+    if (nameLower.includes('delivery')) {
+      deliveryFee += amount;
+    } else if (nameLower.includes('service')) {
+      serviceFee += amount;
+    }
+
+    fees.push({ name: price.name, amount, type: price.type });
   }
 
-  // If VAT wasn't explicitly set but is required, calculate it (5% of service fee + delivery fee)
-  if (vat === 0) {
-    vat = parseFloat(((serviceFee + deliveryFee) * 0.05).toFixed(2));
-    total += vat;
+  // Compute VAT on fees only (exclude subtotal)
+  const isDelivery = String(orderType || '').toLowerCase() === 'delivery';
+  const vatBase = isDelivery ? (serviceFee + deliveryFee) : serviceFee; // Self Pick-up -> only service fee
+  for (const rate of vatRates) {
+    const vatPart = vatBase * (rate / 100);
+    vat += vatPart;
+    fees.push({ name: `VAT ${rate}%`, amount: vatPart, type: 'percentage', rate });
   }
+  total += vat;
 
-  // Prepare summary object
   const summary = {
-    subtotal: parseFloat(subtotal.toFixed(2)),
-    serviceFee: serviceFee,
-    deliveryFee: deliveryFee,
-    vat: vat,
-    total: parseFloat(total.toFixed(2)),
-    fees: fees
+    subtotal,
+    serviceFee,
+    deliveryFee,
+    vat,
+    total,
+    fees
   };
 
-  return {
-    ...summary,
-    outlet: {
-      id: outlet.id,
-      name: outlet.name,
-      whatsappNo: outlet.whatsappNo,
-      emirates: outlet.emirates ? {
-        id: outlet.emirates.id,
-        name: outlet.emirates.name,
-        deliveryFee: deliveryFee
-      } : null
-    }
-  };
+  return summary;
 }
 
 // Helper function to generate a markdown notification message for the order
@@ -319,6 +267,49 @@ export async function POST(request: Request) {
 
     console.log('[ManyChats] Mapped order items:', JSON.stringify(orderItems, null, 2));
 
+    // Resolve outlet/store context and additional prices
+    const categoryLower = String(category || 'food').toLowerCase();
+    let outletRecord: any = null;
+    let additionalPrices: any[] = [];
+    let orderOutletFK: Record<string, number> = {};
+
+    if (!outletId || isNaN(Number(outletId))) {
+      return NextResponse.json({ error: 'Invalid or missing outletId' }, { status: 400 });
+    }
+
+    if (categoryLower === 'grocery') {
+      outletRecord = await prisma.groceryStore.findUnique({
+        where: { id: Number(outletId) },
+        include: { additionalPrices: { where: { isActive: true } } },
+      });
+      if (!outletRecord) {
+        return NextResponse.json({ error: 'Grocery store not found' }, { status: 404 });
+      }
+      additionalPrices = outletRecord.additionalPrices || [];
+      orderOutletFK = { groceryStoreId: Number(outletId) };
+    } else if (categoryLower === 'medicine' || categoryLower === 'medical') {
+      outletRecord = await prisma.medicalStore.findUnique({
+        where: { id: Number(outletId) },
+        include: { additionalPrices: { where: { isActive: true } } },
+      });
+      if (!outletRecord) {
+        return NextResponse.json({ error: 'Medical store not found' }, { status: 404 });
+      }
+      additionalPrices = outletRecord.additionalPrices || [];
+      orderOutletFK = { medicalStoreId: Number(outletId) };
+    } else {
+      // default to food outlet
+      outletRecord = await prisma.outlet.findUnique({
+        where: { id: Number(outletId) },
+        include: { additionalPrices: { where: { isActive: true } } },
+      });
+      if (!outletRecord) {
+        return NextResponse.json({ error: 'Food outlet not found' }, { status: 404 });
+      }
+      additionalPrices = outletRecord.additionalPrices || [];
+      orderOutletFK = { foodOutletId: Number(outletId) };
+    }
+
     // Resolve payment method: optional for Self Pick-up, required for Delivery
     const orderTypeLower = String(orderType || '').toLowerCase();
     const isSelfPickup = orderTypeLower.includes('self'); // covers 'Self Pick-up'
@@ -348,15 +339,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // Calculate totals
-    const { subtotal, serviceFee, deliveryFee, vat, total, fees } = await calculateTotals(
-      orderItems.map((item: any) => ({
-        price: item.price,
-        quantity: item.quantity
-      })),
-      parseInt(outletId),
-      orderType
-    );
+    // Compute totals with additional prices
+    const totals = await calculateTotals(orderItems.map((item: any) => ({
+      price: item.price,
+      quantity: item.quantity
+    })), additionalPrices, orderType);
+    console.log('[ManyChats] Totals with additionalPrices:', totals);
 
     console.log('[ManyChats] Starting database transaction');
     // Create the order and items in a single transaction
@@ -370,18 +358,18 @@ export async function POST(request: Request) {
           emirates: { connect: { id: parseInt(emiratesId) } },
           orderType,
           category,
-          outlet: { connect: { id: parseInt(outletId) } },
+          ...orderOutletFK,
           deliveryAddress,
           deliveryLocation,
           buildingType,
           paymentMethod: resolvedPaymentMethod,
           note: note || '',
           status: 'PENDING',
-          subtotal,
-          serviceFee,
-          deliveryFee,
-          vat,
-          total,
+          subtotal: totals.subtotal,
+          serviceFee: totals.serviceFee,
+          deliveryFee: totals.deliveryFee,
+          vat: totals.vat,
+          total: totals.total,
         },
         include: {
           customer: true,
@@ -469,7 +457,7 @@ export async function POST(request: Request) {
           deliveryFee: orderWithItems.deliveryFee ? `${orderWithItems.deliveryFee.toFixed(2)} AED` : '0.00 AED',
           vat: orderWithItems.vat ? `${orderWithItems.vat.toFixed(2)} AED` : '0.00 AED',
           total: `${orderWithItems.total.toFixed(2)} AED`,
-          fees: fees.map(fee => ({
+          fees: totals.fees.map(fee => ({
             name: fee.name,
             amount: `${fee.amount.toFixed(2)} AED`,
             type: fee.type,
