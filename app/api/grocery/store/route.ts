@@ -29,6 +29,13 @@ type OperatingHours = {
   close: string;
 };
 
+type AdditionalPrice = {
+  name: string;
+  value: number;
+  type: 'fixed' | 'percentage';
+  isActive: boolean;
+};
+
 type GroceryStoreData = {
   name: string;
   emiratesId: number;
@@ -36,6 +43,7 @@ type GroceryStoreData = {
   status: 'OPEN' | 'BUSY' | 'CLOSED';
   exactLocation: LocationData;
   operatingHours: OperatingHours;
+  additionalPrices?: AdditionalPrice[];
 };
 
 export async function GET(request: Request) {
@@ -87,6 +95,7 @@ export async function GET(request: Request) {
         where: { id: parseInt(id) },
         include: {
           emirates: true,
+          additionalPrices: true,
           _count: {
             select: {
               menus: true,
@@ -129,6 +138,7 @@ export async function GET(request: Request) {
         },
         include: {
           emirates: true,
+          additionalPrices: true,
           _count: {
             select: {
               menus: true,
@@ -234,6 +244,7 @@ export async function GET(request: Request) {
           whatsappNo: store.whatsappNo,
           distance: parseFloat((store as any).distance.toFixed(2)),
           exactLocation: store.exactLocation,
+          additionalPrices: store.additionalPrices,
         }));
         
         return NextResponse.json(formattedStores);
@@ -251,6 +262,7 @@ export async function GET(request: Request) {
       where,
       include: {
         emirates: true,
+        additionalPrices: true,
         _count: {
           select: {
             menus: true,
@@ -283,6 +295,24 @@ export async function POST(request: Request) {
         { error: 'Name, emiratesId, and whatsappNo are required' },
         { status: 400 }
       );
+    }
+
+    // Validate additionalPrices if provided
+    let sanitizedAdditionalPrices: AdditionalPrice[] = [];
+    if (Array.isArray(data.additionalPrices)) {
+      for (const p of data.additionalPrices) {
+        const name = String(p.name || '').trim();
+        const type = p.type === 'percentage' ? 'percentage' : (p.type === 'fixed' ? 'fixed' : null);
+        const valueNum = Number(p.value);
+        const isActive = Boolean(p.isActive);
+        if (!name || type === null || !Number.isFinite(valueNum)) {
+          return NextResponse.json(
+            { error: 'Invalid additionalPrices entry. Each requires non-empty name, numeric value, valid type (fixed|percentage), and isActive boolean.' },
+            { status: 400 }
+          );
+        }
+        sanitizedAdditionalPrices.push({ name, value: valueNum, type, isActive });
+      }
     }
     
     // Check if store with same name exists
@@ -317,9 +347,20 @@ export async function POST(request: Request) {
           open: data.operatingHours.open,
           close: data.operatingHours.close,
         } : { open: "00:00", close: "00:00" },
+        ...(sanitizedAdditionalPrices.length > 0 ? {
+          additionalPrices: {
+            create: sanitizedAdditionalPrices.map(p => ({
+              name: p.name,
+              value: p.value,
+              type: p.type,
+              isActive: p.isActive,
+            }))
+          }
+        } : {}),
       },
       include: {
         emirates: true,
+        additionalPrices: true,
       }
     });
 
@@ -379,6 +420,30 @@ export async function PUT(request: Request) {
       }
     }
 
+    // Validate additionalPrices if provided
+    let sanitizedAdditionalPrices: AdditionalPrice[] | null = null;
+    if (data && Array.isArray((data as any).additionalPrices)) {
+      sanitizedAdditionalPrices = [];
+      for (const p of (data as any).additionalPrices) {
+        const name = String(p.name || '').trim();
+        const type = p.type === 'percentage' ? 'percentage' : (p.type === 'fixed' ? 'fixed' : null);
+        const valueNum = Number(p.value);
+        const isActive = Boolean(p.isActive);
+        if (!name || type === null || !Number.isFinite(valueNum)) {
+          return NextResponse.json(
+            { error: 'Invalid additionalPrices entry. Each requires non-empty name, numeric value, valid type (fixed|percentage), and isActive boolean.' },
+            { status: 400 }
+          );
+        }
+        sanitizedAdditionalPrices.push({ name, value: valueNum, type, isActive });
+      }
+    }
+
+    // If replacing additionalPrices, delete existing first
+    if (sanitizedAdditionalPrices && sanitizedAdditionalPrices.length >= 0) {
+      await prisma.additionalPrice.deleteMany({ where: { groceryStoreId: parseInt(id) } });
+    }
+
     // Update the store
     const updatedStore = await prisma.groceryStore.update({
       where: { id: parseInt(id) },
@@ -395,9 +460,20 @@ export async function PUT(request: Request) {
           open: data.operatingHours.open,
           close: data.operatingHours.close,
         } : existingStore.operatingHours as any,
+        ...(sanitizedAdditionalPrices ? {
+          additionalPrices: {
+            create: sanitizedAdditionalPrices.map(p => ({
+              name: p.name,
+              value: p.value,
+              type: p.type,
+              isActive: p.isActive,
+            }))
+          }
+        } : {}),
       },
       include: {
         emirates: true,
+        additionalPrices: true,
         _count: {
           select: {
             menus: true,

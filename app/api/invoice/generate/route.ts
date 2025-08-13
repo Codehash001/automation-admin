@@ -13,7 +13,10 @@ interface GenerateInvoiceRequest {
   items: string | string[];
   orderType: 'Delivery' | 'Pickup';
   customerPhoneNumber?: string;  // Customer's WhatsApp number to send the invoice to
-  outletId?: number;  // Outlet ID for the order
+  category?: 'FOOD' | 'GROCERY' | 'MEDICINE';
+  outletId?: number;         // For FOOD
+  groceryStoreId?: number;   // For GROCERY
+  medicalStoreId?: number;   // For MEDICINE
 }
 
 interface InvoiceResponse {
@@ -105,39 +108,97 @@ export async function POST(request: Request) {
       );
     }
 
-    const { items: rawItems, orderType, customerPhoneNumber, outletId: rawOutletId } = body as GenerateInvoiceRequest;
-    
-    // Convert outletId to number and validate
-    const outletId = Number(rawOutletId);
-    if (isNaN(outletId)) {
+    const {
+      items: rawItems,
+      orderType,
+      customerPhoneNumber,
+      outletId: rawOutletId,
+      groceryStoreId: rawGroceryId,
+      medicalStoreId: rawMedicalId,
+      category: rawCategory,
+    } = body as GenerateInvoiceRequest;
+
+    // Parse IDs safely (they may arrive as strings)
+    const outletId = rawOutletId !== undefined ? Number(rawOutletId) : undefined;
+    const groceryStoreId = rawGroceryId !== undefined ? Number(rawGroceryId) : undefined;
+    const medicalStoreId = rawMedicalId !== undefined ? Number(rawMedicalId) : undefined;
+
+    // Backward compatibility: if only outletId is provided with no category, assume FOOD
+    const category = (rawCategory || (typeof outletId === 'number' && !isNaN(outletId) ? 'FOOD' : undefined)) as
+      | 'FOOD'
+      | 'GROCERY'
+      | 'MEDICINE'
+      | undefined;
+
+    // Validate category/IDs
+    const idsProvided = [outletId, groceryStoreId, medicalStoreId].filter(
+      (v) => typeof v === 'number' && !isNaN(v as number)
+    );
+
+    if (!category) {
       return NextResponse.json(
-        { success: false, error: 'Invalid outlet ID format' },
+        { success: false, error: 'category is required (FOOD | GROCERY | MEDICINE) or provide outletId to default to FOOD' },
         { status: 400 }
       );
     }
 
-    // Validate outletId is provided and is a valid number
-    if (!outletId) {
+    if (idsProvided.length !== 1) {
       return NextResponse.json(
-        { success: false, error: 'Outlet ID is required' },
+        { success: false, error: 'Provide exactly one of outletId, groceryStoreId, or medicalStoreId' },
         { status: 400 }
       );
     }
 
-    // Verify the outlet exists
-    const outlet = await prisma.outlet.findUnique({
-      where: { id: outletId },
-      include: {
-        additionalPrices: {
-          where: { isActive: true }
+    if (category === 'FOOD' && typeof outletId !== 'number') {
+      return NextResponse.json(
+        { success: false, error: 'For category FOOD you must provide outletId' },
+        { status: 400 }
+      );
+    }
+    if (category === 'GROCERY' && typeof groceryStoreId !== 'number') {
+      return NextResponse.json(
+        { success: false, error: 'For category GROCERY you must provide groceryStoreId' },
+        { status: 400 }
+      );
+    }
+    if (category === 'MEDICINE' && typeof medicalStoreId !== 'number') {
+      return NextResponse.json(
+        { success: false, error: 'For category MEDICINE you must provide medicalStoreId' },
+        { status: 400 }
+      );
+    }
+
+    // Fetch the correct store entity and its active additional prices
+    let store: any = null;
+    if (category === 'FOOD') {
+      store = await prisma.outlet.findUnique({
+        where: { id: outletId as number },
+        include: {
+          additionalPrices: { where: { isActive: true } },
+          emirates: true,
         },
-        emirates: true
-      }
-    });
+      });
+    } else if (category === 'GROCERY') {
+      store = await prisma.groceryStore.findUnique({
+        where: { id: groceryStoreId as number },
+        include: {
+          additionalPrices: { where: { isActive: true } },
+          emirates: true,
+        },
+      });
+    } else if (category === 'MEDICINE') {
+      store = await prisma.medicalStore.findUnique({
+        where: { id: medicalStoreId as number },
+        include: {
+          additionalPrices: { where: { isActive: true } },
+          emirates: true,
+        },
+      });
+    }
 
-    if (!outlet) {
+    if (!store) {
       return NextResponse.json(
-        { success: false, error: 'Outlet not found' },
+        { success: false, error: 'Store not found' },
         { status: 404 }
       );
     }
@@ -186,8 +247,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Use the additional prices from the outlet instead of fetching all
-    const additionalPrices = outlet.additionalPrices;
+    // Use the additional prices from the store instead of fetching all
+    const additionalPrices = store.additionalPrices;
 
     const subtotal = Number(
       processedItems
@@ -310,22 +371,24 @@ export async function POST(request: Request) {
           name: item.name,
           quantity: item.quantity,
           unitPrice: item.price,
-          total: item.total
+          total: item.total,
         })),
         subtotal,
         fees: applicableFees.map((fee: any) => ({
           name: fee.name,
-          amount: fee.amount
+          amount: fee.amount,
         })),
         total,
         orderType,
         date: uaeTime,
+        category,
+        // Maintain existing field name for backward compatibility
         outlet: {
-          id: outlet.id,
-          name: outlet.name,
-          emirate: outlet.emirates?.name || 'UAE'
-        }
-      }
+          id: store.id,
+          name: store.name,
+          emirate: store.emirates?.name || 'UAE',
+        },
+      },
     };
 
     return NextResponse.json(response);

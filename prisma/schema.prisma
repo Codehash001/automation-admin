@@ -48,7 +48,6 @@ model Outlet {
   orders           Order[]
   cuisines         OutletCuisine[]
   additionalPrices AdditionalPrice[]
-
   @@map("outlets")
 }
 
@@ -253,10 +252,16 @@ model AdditionalPrice {
   isActive  Boolean  @default(true)
   outlet    Outlet?  @relation(fields: [outletId], references: [id], onDelete: Cascade)
   outletId  Int?
+  groceryStore   GroceryStore? @relation(fields: [groceryStoreId], references: [id], onDelete: Cascade)
+  groceryStoreId Int?
+  medicalStore   MedicalStore? @relation(fields: [medicalStoreId], references: [id], onDelete: Cascade)
+  medicalStoreId Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([outletId])
+  @@index([groceryStoreId])
+  @@index([medicalStoreId])
 }
 
 // Grocery Store Models
@@ -271,6 +276,7 @@ model GroceryStore {
   operatingHours Json          @default("{\"open\": \"00:00\", \"close\": \"00:00\"}")
   menus          GroceryMenu[]
   orders         Order[]
+  additionalPrices AdditionalPrice[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -315,6 +321,7 @@ model MedicalStore {
   operatingHours Json           @default("{\"open\": \"00:00\", \"close\": \"00:00\"}")
   menus          MedicineMenu[]
   orders         Order[]
+  additionalPrices AdditionalPrice[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 }

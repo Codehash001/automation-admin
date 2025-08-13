@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 // Mapbox access token - you'll need to set this in your environment variables
@@ -38,12 +39,32 @@ interface GroceryStore {
     menus: number;
     orders: number;
   };
+  additionalPrices?: {
+    id?: number;
+    name: string;
+    value: number;
+    type: 'fixed' | 'percentage';
+    isActive: boolean;
+  }[];
 }
 
 interface Emirates {
   id: number;
   name: string;
 }
+
+interface AdditionalPrice {
+  name: string;
+  value: string; // keep as string in form, convert to number on submit
+  type: 'fixed' | 'percentage';
+  isActive: boolean;
+}
+
+const DEFAULT_ADDITIONAL_PRICES: AdditionalPrice[] = [
+  { name: 'VAT', value: '5', type: 'percentage', isActive: true },
+  { name: 'SERVICE_FEE', value: '10', type: 'fixed', isActive: true },
+  { name: 'DELIVERY_FEE', value: '15', type: 'fixed', isActive: true },
+];
 
 export default function GroceryStorePage() {
   const [stores, setStores] = useState<GroceryStore[]>([]);
@@ -80,6 +101,7 @@ export default function GroceryStorePage() {
       open: '09:00',
       close: '21:00',
     },
+    additionalPrices: DEFAULT_ADDITIONAL_PRICES.slice(),
   });
 
   // Fetch stores
@@ -356,6 +378,14 @@ export default function GroceryStorePage() {
           open: store.operatingHours.open,
           close: store.operatingHours.close,
         },
+        additionalPrices: (store.additionalPrices && store.additionalPrices.length > 0)
+          ? store.additionalPrices.map(p => ({
+              name: p.name,
+              value: String(p.value),
+              type: p.type,
+              isActive: p.isActive,
+            }))
+          : DEFAULT_ADDITIONAL_PRICES.slice(),
       });
     } else {
       setSelectedStore(null);
@@ -372,6 +402,7 @@ export default function GroceryStorePage() {
           open: '09:00',
           close: '21:00',
         },
+        additionalPrices: DEFAULT_ADDITIONAL_PRICES.slice(),
       });
     }
     
@@ -415,6 +446,12 @@ export default function GroceryStorePage() {
           open: formData.operatingHours.open,
           close: formData.operatingHours.close,
         },
+        additionalPrices: (formData.additionalPrices || []).map(p => ({
+          name: (p.name || '').trim(),
+          value: Number(p.value) || 0,
+          type: p.type,
+          isActive: Boolean(p.isActive),
+        })),
       };
 
       const url = selectedStore
@@ -643,6 +680,7 @@ export default function GroceryStorePage() {
               open: '09:00',
               close: '21:00',
             },
+            additionalPrices: DEFAULT_ADDITIONAL_PRICES.slice(),
           });
         }
       }}>
@@ -829,6 +867,98 @@ export default function GroceryStorePage() {
                         />
                         CLOSED
                       </label>
+                    </div>
+                  </div>
+
+                  {/* Additional Prices */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Additional Prices</Label>
+                    <div className="space-y-3">
+                      {(formData.additionalPrices || []).map((price, idx) => (
+                        <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                          <Input
+                            className="col-span-4"
+                            placeholder="Name"
+                            value={price.name}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setFormData(prev => ({
+                                ...prev,
+                                additionalPrices: prev.additionalPrices.map((p: AdditionalPrice, i: number) => i === idx ? { ...p, name: val } : p),
+                              }));
+                            }}
+                          />
+                          <Input
+                            className="col-span-3"
+                            placeholder="Value"
+                            type="number"
+                            value={price.value}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setFormData(prev => ({
+                                ...prev,
+                                additionalPrices: prev.additionalPrices.map((p: AdditionalPrice, i: number) => i === idx ? { ...p, value: val } : p),
+                              }));
+                            }}
+                          />
+                          <Select
+                            value={price.type}
+                            onValueChange={(val: 'fixed' | 'percentage') => {
+                              setFormData(prev => ({
+                                ...prev,
+                                additionalPrices: prev.additionalPrices.map((p: AdditionalPrice, i: number) => i === idx ? { ...p, type: val } : p),
+                              }));
+                            }}
+                          >
+                            <SelectTrigger className="col-span-3">
+                              <SelectValue placeholder="Type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="fixed">Fixed</SelectItem>
+                              <SelectItem value="percentage">Percentage</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <div className="col-span-2 flex items-center gap-2">
+                            <Checkbox
+                              checked={price.isActive}
+                              onCheckedChange={(checked) => {
+                                const val = Boolean(checked);
+                                setFormData(prev => ({
+                                  ...prev,
+                                  additionalPrices: prev.additionalPrices.map((p: AdditionalPrice, i: number) => i === idx ? { ...p, isActive: val } : p),
+                                }));
+                              }}
+                            />
+                            <span className="text-xs">Active</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="ml-auto text-destructive"
+                              onClick={() => {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  additionalPrices: prev.additionalPrices.filter((_: AdditionalPrice, i: number) => i !== idx),
+                                }));
+                              }}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setFormData(prev => ({
+                          ...prev,
+                          additionalPrices: [
+                            ...(prev.additionalPrices || []),
+                            { name: '', value: '0', type: 'fixed', isActive: true },
+                          ],
+                        }))}
+                      >
+                        Add Price
+                      </Button>
                     </div>
                   </div>
                 </div>

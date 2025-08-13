@@ -38,6 +38,13 @@ interface MedicalStore {
     menus: number;
     orders: number;
   };
+  additionalPrices?: {
+    id?: number;
+    name: string;
+    value: number;
+    type: 'fixed' | 'percentage';
+    isActive: boolean;
+  }[];
 }
 
 interface Emirates {
@@ -80,6 +87,11 @@ export default function MedicalStorePage() {
       open: '09:00',
       close: '21:00',
     },
+    additionalPrices: [
+      { name: 'VAT', value: '5', type: 'percentage' as const, isActive: true },
+      { name: 'SERVICE_FEE', value: '10', type: 'fixed' as const, isActive: true },
+      { name: 'DELIVERY_FEE', value: '15', type: 'fixed' as const, isActive: true },
+    ] as { name: string; value: string; type: 'fixed' | 'percentage'; isActive: boolean }[],
   });
 
   // Fetch stores
@@ -144,6 +156,12 @@ export default function MedicalStorePage() {
           open: store.operatingHours.open,
           close: store.operatingHours.close,
         },
+        additionalPrices: (store.additionalPrices || []).map((p) => ({
+          name: p.name,
+          value: String(p.value ?? ''),
+          type: p.type === 'percentage' ? 'percentage' : 'fixed',
+          isActive: Boolean(p.isActive),
+        })),
       });
     } else {
       setFormData({
@@ -159,6 +177,11 @@ export default function MedicalStorePage() {
           open: '09:00',
           close: '21:00',
         },
+        additionalPrices: [
+          { name: 'VAT', value: '5', type: 'percentage', isActive: true },
+          { name: 'SERVICE_FEE', value: '10', type: 'fixed', isActive: true },
+          { name: 'DELIVERY_FEE', value: '15', type: 'fixed', isActive: true },
+        ],
       });
     }
     setMapInitialized(false);
@@ -187,6 +210,16 @@ export default function MedicalStorePage() {
           open: formData.operatingHours.open,
           close: formData.operatingHours.close,
         },
+        additionalPrices: Array.isArray(formData.additionalPrices)
+          ? formData.additionalPrices
+              .filter((p) => String(p.name || '').trim() !== '' && !isNaN(parseFloat(p.value)))
+              .map((p) => ({
+                name: String(p.name).trim(),
+                value: parseFloat(p.value),
+                type: p.type === 'percentage' ? 'percentage' : 'fixed',
+                isActive: Boolean(p.isActive),
+              }))
+          : [],
       };
 
       let response;
@@ -606,6 +639,11 @@ export default function MedicalStorePage() {
               open: '09:00',
               close: '21:00',
             },
+            additionalPrices: [
+              { name: 'VAT', value: '5', type: 'percentage', isActive: true },
+              { name: 'SERVICE_FEE', value: '10', type: 'fixed', isActive: true },
+              { name: 'DELIVERY_FEE', value: '15', type: 'fixed', isActive: true },
+            ],
           });
         }
       }}>
@@ -757,6 +795,119 @@ export default function MedicalStorePage() {
                           }
                           required
                         />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Additional Prices */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Additional Prices</Label>
+                    <div className="space-y-3">
+                      {formData.additionalPrices?.map((price, index) => (
+                        <div key={index} className="grid grid-cols-12 gap-2 items-end">
+                          <div className="col-span-4">
+                            <label className="text-xs text-muted-foreground">Name</label>
+                            <Input
+                              value={price.name}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setFormData((prev) => {
+                                  const arr = [...prev.additionalPrices];
+                                  arr[index] = { ...arr[index], name: val };
+                                  return { ...prev, additionalPrices: arr };
+                                });
+                              }}
+                              placeholder="e.g., VAT, SERVICE_FEE, DELIVERY_FEE"
+                            />
+                          </div>
+                          <div className="col-span-3">
+                            <label className="text-xs text-muted-foreground">Type</label>
+                            <Select
+                              value={price.type}
+                              onValueChange={(val: 'fixed' | 'percentage') =>
+                                setFormData((prev) => {
+                                  const arr = [...prev.additionalPrices];
+                                  arr[index] = { ...arr[index], type: val };
+                                  return { ...prev, additionalPrices: arr };
+                                })
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select Type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="fixed">Fixed (AED)</SelectItem>
+                                <SelectItem value="percentage">Percentage (%)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="col-span-3">
+                            <label className="text-xs text-muted-foreground">Value</label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={price.value}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setFormData((prev) => {
+                                  const arr = [...prev.additionalPrices];
+                                  arr[index] = { ...arr[index], value: val } as any;
+                                  return { ...prev, additionalPrices: arr };
+                                });
+                              }}
+                              placeholder={price.type === 'percentage' ? 'e.g., 5' : 'e.g., 10'}
+                            />
+                          </div>
+                          <div className="col-span-1 flex items-center gap-2">
+                            <input
+                              id={`isActive-${index}`}
+                              type="checkbox"
+                              checked={!!price.isActive}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setFormData((prev) => {
+                                  const arr = [...prev.additionalPrices];
+                                  arr[index] = { ...arr[index], isActive: checked };
+                                  return { ...prev, additionalPrices: arr };
+                                });
+                              }}
+                              className="h-4 w-4"
+                            />
+                          </div>
+                          <div className="col-span-1 flex justify-end">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive"
+                              onClick={() =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  additionalPrices: prev.additionalPrices.filter((_, i) => i !== index),
+                                }))
+                              }
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                      <div>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              additionalPrices: [
+                                ...prev.additionalPrices,
+                                { name: '', value: '0', type: 'fixed', isActive: true },
+                              ],
+                            }))
+                          }
+                        >
+                          <Plus className="mr-2 h-4 w-4" /> Add Price
+                        </Button>
                       </div>
                     </div>
                   </div>
