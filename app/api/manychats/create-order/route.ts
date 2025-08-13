@@ -283,43 +283,51 @@ export async function POST(request: Request) {
     // Resolve outlet/store context and additional prices
     let outletRecord: any = null;
     let additionalPrices: any[] = [];
-    let orderOutletFK: Record<string, number> = {};
+    let orderOutletFK: Record<string, any> = {};
 
     if (!outletId || isNaN(Number(outletId))) {
       return NextResponse.json({ error: 'Invalid or missing outletId' }, { status: 400 });
     }
 
     if (categoryLower === 'grocery') {
+      // Load Grocery Store and its active additional prices
       outletRecord = await prisma.groceryStore.findUnique({
         where: { id: Number(outletId) },
-        include: { additionalPrices: { where: { isActive: true } } },
+        include: {
+          additionalPrices: { where: { isActive: true } },
+        },
       });
       if (!outletRecord) {
         return NextResponse.json({ error: 'Grocery store not found' }, { status: 404 });
       }
       additionalPrices = outletRecord.additionalPrices || [];
-      orderOutletFK = { groceryStoreId: Number(outletId) };
+      orderOutletFK = { groceryStore: { connect: { id: Number(outletId) } } };
     } else if (categoryLower === 'medicine' || categoryLower === 'medical') {
+      // Load Medical Store and its active additional prices
       outletRecord = await prisma.medicalStore.findUnique({
         where: { id: Number(outletId) },
-        include: { additionalPrices: { where: { isActive: true } } },
+        include: {
+          additionalPrices: { where: { isActive: true } },
+        },
       });
       if (!outletRecord) {
         return NextResponse.json({ error: 'Medical store not found' }, { status: 404 });
       }
       additionalPrices = outletRecord.additionalPrices || [];
-      orderOutletFK = { medicalStoreId: Number(outletId) };
+      orderOutletFK = { medicalStore: { connect: { id: Number(outletId) } } };
     } else {
-      // default to food outlet
+      // Default to Food Outlet
       outletRecord = await prisma.outlet.findUnique({
         where: { id: Number(outletId) },
-        include: { additionalPrices: { where: { isActive: true } } },
+        include: {
+          additionalPrices: { where: { isActive: true } },
+        },
       });
       if (!outletRecord) {
         return NextResponse.json({ error: 'Food outlet not found' }, { status: 404 });
       }
       additionalPrices = outletRecord.additionalPrices || [];
-      orderOutletFK = { foodOutletId: Number(outletId) };
+      orderOutletFK = { outlet: { connect: { id: Number(outletId) } } };
     }
 
     // Resolve payment method: optional for Self Pick-up, required for Delivery
