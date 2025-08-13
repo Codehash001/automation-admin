@@ -213,62 +213,74 @@ export async function POST(request: Request) {
     }
     
     console.log('[ManyChats] Fetching menu items');
-    const menuItems = await prisma.menuItem.findMany({
-      where: {
-        menu: {
-          outletId: parseInt(outletId)
-        }
-      },
-      include: {
-        menu: true
-      }
-    });
-    
-    console.log(`[ManyChats] Found ${menuItems.length} menu items in outlet ${outletId}`);
-    console.log('[ManyChats] Available menu items:', menuItems.map((mi: any) => ({
-      id: mi.id,
-      name: mi.name,
-      price: mi.price,
-      menuName: mi.menu.name
-    })));
+    const categoryLower = String(category || 'food').toLowerCase();
+    let availableMenuItems: Array<{ id: number; name: string; price: number; menuName?: string }>; 
+    if (categoryLower === 'grocery') {
+      const items = await prisma.groceryMenuItem.findMany({
+        where: { menu: { storeId: Number(outletId) }, isAvailable: true },
+        include: { menu: true }
+      });
+      availableMenuItems = items.map(i => ({ id: i.id, name: i.name, price: Number(i.price), menuName: i.menu?.name }));
+      console.log(`[ManyChats] Found ${availableMenuItems.length} grocery menu items in store ${outletId}`);
+    } else if (categoryLower === 'medicine' || categoryLower === 'medical') {
+      const items = await prisma.medicineMenuItem.findMany({
+        where: { menu: { storeId: Number(outletId) }, isAvailable: true },
+        include: { menu: true }
+      });
+      availableMenuItems = items.map(i => ({ id: i.id, name: i.name, price: Number(i.price), menuName: i.menu?.name }));
+      console.log(`[ManyChats] Found ${availableMenuItems.length} medicine menu items in store ${outletId}`);
+    } else {
+      const items = await prisma.menuItem.findMany({
+        where: { menu: { outletId: Number(outletId) }, isAvailable: true },
+        include: { menu: true }
+      });
+      availableMenuItems = items.map(i => ({ id: i.id, name: i.name, price: Number(i.price), menuName: i.menu?.name }));
+      console.log(`[ManyChats] Found ${availableMenuItems.length} food menu items in outlet ${outletId}`);
+    }
+    console.log('[ManyChats] Available menu items:', availableMenuItems.map(mi => ({ id: mi.id, name: mi.name, price: mi.price, menuName: mi.menuName })));
 
     // Map parsed items to menu items
     const orderItems: { menuItemId: number; quantity: number; price: number; menuItemName: string; }[] = [];
     for (const parsedItem of parsedItems) {
-      // Find menu item by name (case-insensitive)
-      const menuItem = menuItems.find((mi: any) => 
-        mi.name.trim().toLowerCase() === parsedItem.name.trim().toLowerCase()
-      );
-      
-      if (!menuItem) {
-        console.error(`[ManyChats] Menu item not found: "${parsedItem.name}"`);
-        console.error(`[ManyChats] Available items: ${menuItems.map((mi: any) => `"${mi.name}"`).join(', ')}`);
-        return NextResponse.json(
-          { 
-            error: `Menu item not found: "${parsedItem.name}"`,
-            availableItems: menuItems.map((mi: any) => ({
-              id: mi.id,
-              name: mi.name,
-              price: mi.price
-            }))
-          },
-          { status: 400 }
-        );
+      const queryName = parsedItem.name.trim().toLowerCase();
+      const matchedItem = availableMenuItems.find(mi => mi.name.trim().toLowerCase() === queryName);
+      if (!matchedItem) {
+        console.log(`[ManyChats] Menu item not found: "${parsedItem.name}"`);
+        console.log('[ManyChats] Available items:', availableMenuItems.map(mi => `"${mi.name}"`).join(', '));
+        return NextResponse.json({
+          error: `Menu item not found: ${parsedItem.name}`,
+          availableItems: availableMenuItems.map(mi => mi.name)
+        }, { status: 400 });
       }
       
       // Use the price from the input, not from the database
-      orderItems.push({
-        menuItemId: menuItem.id,
-        quantity: parsedItem.quantity,
-        price: parsedItem.price,
-        menuItemName: menuItem.name
-      });
+      if (categoryLower === 'grocery') {
+        orderItems.push({
+          groceryMenuItemId: matchedItem.id,
+          quantity: parsedItem.quantity,
+          price: parsedItem.price,
+          menuItemName: matchedItem.name
+        } as any);
+      } else if (categoryLower === 'medicine' || categoryLower === 'medical') {
+        orderItems.push({
+          medicineMenuItemId: matchedItem.id,
+          quantity: parsedItem.quantity,
+          price: parsedItem.price,
+          menuItemName: matchedItem.name
+        } as any);
+      } else {
+        orderItems.push({
+          menuItemId: matchedItem.id,
+          quantity: parsedItem.quantity,
+          price: parsedItem.price,
+          menuItemName: matchedItem.name
+        });
+      }
     }
 
     console.log('[ManyChats] Mapped order items:', JSON.stringify(orderItems, null, 2));
 
     // Resolve outlet/store context and additional prices
-    const categoryLower = String(category || 'food').toLowerCase();
     let outletRecord: any = null;
     let additionalPrices: any[] = [];
     let orderOutletFK: Record<string, number> = {};
@@ -381,22 +393,51 @@ export async function POST(request: Request) {
       console.log(`[ManyChats] Order created with ID: ${order.id}`);
       console.log('[ManyChats] Creating order items:', JSON.stringify(orderItems, null, 2));
 
-      // Create order items in a batch
-      await tx.orderItem.createMany({
-        data: orderItems.map(item => ({
-          orderId: order.id,
-          menuItemId: item.menuItemId,
-          quantity: item.quantity,
-          price: item.price,
-        })),
-        skipDuplicates: true,
-      });
-
-      // Fetch the created items with their menuItem relations
-      const items = await tx.orderItem.findMany({
-        where: { orderId: order.id },
-        include: { menuItem: true }
-      });
+      // Create order items in a batch according to category
+      let items: any[] = [];
+      if (categoryLower === 'grocery') {
+        await tx.groceryOrderItem.createMany({
+          data: orderItems.map((item: any) => ({
+            orderId: order.id,
+            groceryMenuItemId: item.groceryMenuItemId,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+          skipDuplicates: true,
+        });
+        items = await tx.groceryOrderItem.findMany({
+          where: { orderId: order.id },
+          include: { groceryMenuItem: true }
+        });
+      } else if (categoryLower === 'medicine' || categoryLower === 'medical') {
+        await tx.medicineOrderItem.createMany({
+          data: orderItems.map((item: any) => ({
+            orderId: order.id,
+            medicineMenuItemId: item.medicineMenuItemId,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+          skipDuplicates: true,
+        });
+        items = await tx.medicineOrderItem.findMany({
+          where: { orderId: order.id },
+          include: { medicineMenuItem: true }
+        });
+      } else {
+        await tx.orderItem.createMany({
+          data: orderItems.map((item: any) => ({
+            orderId: order.id,
+            menuItemId: item.menuItemId,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+          skipDuplicates: true,
+        });
+        items = await tx.orderItem.findMany({
+          where: { orderId: order.id },
+          include: { menuItem: true }
+        });
+      }
 
       console.log(`[ManyChats] Created ${items.length} order items`);
       
