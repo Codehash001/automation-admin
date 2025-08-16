@@ -149,11 +149,12 @@ async function calculateTotals(
 
 // Helper function to generate a markdown notification message for the order
 function generateOrderNotification(order: any) {
-  // Format each order item
-  const itemsList = order.items
+  // Format each order item (support food/grocery/medicine)
+  const itemsList = (order.items || [])
     .map((item: any) => {
-      const itemTotal = item.quantity * item.price;
-      return `• ${item.quantity}x ${item.menuItem.name} - ${item.price.toFixed(2)} AED (${itemTotal.toFixed(2)} AED)`;
+      const itemTotal = Number(item.quantity) * Number(item.price);
+      const itemName = item?.menuItem?.name || item?.groceryMenuItem?.name || item?.medicineMenuItem?.name || item?.menuItemName || 'Item';
+      return `• ${item.quantity}x ${itemName} - ${Number(item.price).toFixed(2)} AED (${itemTotal.toFixed(2)} AED)`;
     })
     .join('\n');
 
@@ -463,10 +464,12 @@ export async function POST(request: Request) {
 
     console.log(`[ManyChats] Transaction completed for order ${orderWithItems.id}`);
 
-    // Format the order items
-    const orderItemsResponse = orderWithItems.items.map((item: any) => ({
-      detail: `${item.menuItem.name} × ${item.quantity} - ${(Number(item.price) * Number(item.quantity)).toFixed(2)} AED`
-    }));
+    // Format the order items (support food/grocery/medicine)
+    const orderItemsResponse = (orderWithItems.items || []).map((item: any) => {
+      const itemName = item?.menuItem?.name || item?.groceryMenuItem?.name || item?.medicineMenuItem?.name || item?.menuItemName || 'Item';
+      const total = (Number(item.price) * Number(item.quantity)).toFixed(2);
+      return { detail: `${itemName} × ${item.quantity} - ${total} AED` };
+    });
 
     // Calculate item quantities for grouped items
     const groupedItems = orderItemsResponse.reduce((acc: any, item: any, index: number) => {
