@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Pencil, Trash2, Search, AlertCircle, Filter, MapPin, Clock, Layers, Map, Scale, User, Phone, Users } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, AlertCircle, Filter, MapPin, Clock, Layers, Map, Scale, User, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -30,7 +30,6 @@ interface LegalPlace {
     lng: number;
   };
   address: string;
-  numberOfAppointedPeople: number;
   _count?: {
     appointments: number;
   };
@@ -63,11 +62,10 @@ export default function LegalPage() {
     whatsappNo: '',
     status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
     exactLocation: {
-      lat: '55.296249',
-      lng: '25.276987',
+      lat: '25.276987',
+      lng: '55.296249',
     },
     address: '',
-    numberOfAppointedPeople: 1,
   });
 
   // Add-specialist dialog state
@@ -291,7 +289,6 @@ export default function LegalPage() {
           lng: place.exactLocation.lng.toString(),
         },
         address: place.address,
-        numberOfAppointedPeople: place.numberOfAppointedPeople,
       });
     } else {
       setSelectedPlace(null);
@@ -305,7 +302,6 @@ export default function LegalPage() {
           lng: '55.296249',
         },
         address: '',
-        numberOfAppointedPeople: 1,
       });
     }
     setMapInitialized(false);
@@ -335,7 +331,6 @@ export default function LegalPage() {
           lng: parseFloat(formData.exactLocation.lng),
         },
         address: formData.address,
-        numberOfAppointedPeople: formData.numberOfAppointedPeople,
       };
 
       const response = await fetch(url, {
@@ -538,7 +533,6 @@ export default function LegalPage() {
                     <TableHead>Specialists</TableHead>
                     <TableHead>Contact Info</TableHead>
                     <TableHead>Location</TableHead>
-                    <TableHead>Capacity</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Consultations</TableHead>
                     <TableHead>Actions</TableHead>
@@ -573,12 +567,6 @@ export default function LegalPage() {
                           <span className="truncate max-w-[200px]" title={place.address}>
                             {place.address}
                           </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <Users className="h-4 w-4 mr-2 text-blue-500" />
-                          <Badge variant="outline">{place.numberOfAppointedPeople} people</Badge>
                         </div>
                       </TableCell>
                       <TableCell>{getStatusBadge(place.status)}</TableCell>
@@ -641,7 +629,6 @@ export default function LegalPage() {
               lng: '55.296249',
             },
             address: '',
-            numberOfAppointedPeople: 1,
           });
           setMapInitialized(false);
           setSearchQuery('');
@@ -713,20 +700,6 @@ export default function LegalPage() {
                       value={formData.address}
                       onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                       placeholder="Full Address"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="numberOfAppointedPeople" className="text-sm font-medium">Default Capacity <span className="text-red-500">*</span></Label>
-                    <Input
-                      id="numberOfAppointedPeople"
-                      type="number"
-                      min="1"
-                      max="20"
-                      value={formData.numberOfAppointedPeople}
-                      onChange={(e) => setFormData({ ...formData, numberOfAppointedPeople: parseInt(e.target.value) || 1 })}
-                      placeholder="Number of people"
                       required
                     />
                   </div>

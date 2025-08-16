@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Pencil, Trash2, Search, AlertCircle, Filter, MapPin, Clock, Layers, Map, Scissors, User, Phone, Users } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, AlertCircle, Filter, MapPin, Clock, Layers, Map, Scissors, User, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -30,7 +30,6 @@ interface SalonPlace {
     lng: number;
   };
   address: string;
-  numberOfAppointedPeople: number;
   _count?: {
     appointments: number;
   };
@@ -72,7 +71,6 @@ export default function SalonPage() {
       lng: '55.296249',
     },
     address: '',
-    numberOfAppointedPeople: 1,
   });
 
   // Fetch salon places
@@ -293,7 +291,6 @@ export default function SalonPage() {
           lng: place.exactLocation.lng.toString(),
         },
         address: place.address,
-        numberOfAppointedPeople: place.numberOfAppointedPeople,
       });
     } else {
       setSelectedPlace(null);
@@ -307,7 +304,6 @@ export default function SalonPage() {
           lng: '55.296249',
         },
         address: '',
-        numberOfAppointedPeople: 1,
       });
     }
     setMapInitialized(false);
@@ -337,7 +333,6 @@ export default function SalonPage() {
           lng: parseFloat(formData.exactLocation.lng),
         },
         address: formData.address,
-        numberOfAppointedPeople: formData.numberOfAppointedPeople,
       };
 
       const response = await fetch(url, {
@@ -540,7 +535,6 @@ export default function SalonPage() {
                     <TableHead>Specialists</TableHead>
                     <TableHead>Contact Info</TableHead>
                     <TableHead>Location</TableHead>
-                    <TableHead>Capacity</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Appointments</TableHead>
                     <TableHead>Actions</TableHead>
@@ -575,12 +569,6 @@ export default function SalonPage() {
                           <span className="truncate max-w-[200px]" title={place.address}>
                             {place.address}
                           </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <Users className="h-4 w-4 mr-2 text-blue-500" />
-                          <Badge variant="outline">{place.numberOfAppointedPeople} people</Badge>
                         </div>
                       </TableCell>
                       <TableCell>{getStatusBadge(place.status)}</TableCell>
@@ -642,7 +630,6 @@ export default function SalonPage() {
               lng: '55.296249',
             },
             address: '',
-            numberOfAppointedPeople: 1,
           });
           setMapInitialized(false);
           if (mapboxMap.current) {
@@ -712,20 +699,6 @@ export default function SalonPage() {
                       value={formData.address}
                       onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                       placeholder="Full Address"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="numberOfAppointedPeople" className="text-sm font-medium">Default Capacity <span className="text-red-500">*</span></Label>
-                    <Input
-                      id="numberOfAppointedPeople"
-                      type="number"
-                      min="1"
-                      max="20"
-                      value={formData.numberOfAppointedPeople}
-                      onChange={(e) => setFormData({ ...formData, numberOfAppointedPeople: parseInt(e.target.value) || 1 })}
-                      placeholder="Number of people"
                       required
                     />
                   </div>

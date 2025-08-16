@@ -375,7 +375,6 @@ model AppointmentPlace {
   status                  String          @default("ACTIVE") // ACTIVE, INACTIVE
   exactLocation           Json            @default("{\"lat\": 0.0, \"lng\": 0.0}")
   address                 String
-  numberOfAppointedPeople Int             @default(1) // Default to 1, only change for restaurant appointments
   appointments            Appointment[]
   createdAt               DateTime        @default(now())
   updatedAt               DateTime        @updatedAt
@@ -391,7 +390,7 @@ model Appointment {
   appointmentPlaceId Int
   appointmentDate    DateTime
   status             String           @default("SCHEDULED") // PENDING, SCHEDULED, COMPLETED, CANCELLED
-  numberOfTables     Int?             // Optional: only applicable for Restaurant reservations
+  numberOfGuests     Int?             // Optional: only applicable for Restaurant reservations
   appointmentSetter  String?          // Optional: name/identifier of who set the appointment
   specialistName     String?          // Optional: name of the specialist
   createdAt          DateTime         @default(now())

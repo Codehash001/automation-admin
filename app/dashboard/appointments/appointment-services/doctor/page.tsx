@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Pencil, Trash2, Search, AlertCircle, Filter, MapPin, Clock, Layers, Map, Stethoscope, User, Phone, Users } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, AlertCircle, Filter, MapPin, Clock, Layers, Map, Stethoscope, User, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -21,8 +21,8 @@ const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || 'your
 interface DoctorPlace {
   id: number;
   name: string;
-  specialistName?: string; // legacy
-  specialistNames?: string[]; // new array
+  specialistName?: string; // legacy single value
+  specialistNames?: string[]; // new array field
   whatsappNo: string;
   status: 'ACTIVE' | 'INACTIVE';
   exactLocation: {
@@ -30,7 +30,6 @@ interface DoctorPlace {
     lng: number;
   };
   address: string;
-  numberOfAppointedPeople: number;
   _count?: {
     appointments: number;
   };
@@ -72,7 +71,6 @@ export default function DoctorPage() {
       lng: '55.296249',
     },
     address: '',
-    numberOfAppointedPeople: 1,
   });
 
   // Fetch doctor places
@@ -272,7 +270,6 @@ export default function DoctorPage() {
           lng: place.exactLocation.lng.toString(),
         },
         address: place.address,
-        numberOfAppointedPeople: place.numberOfAppointedPeople,
       });
     } else {
       setSelectedPlace(null);
@@ -282,11 +279,10 @@ export default function DoctorPage() {
         whatsappNo: '',
         status: 'ACTIVE',
         exactLocation: {
-          lat: '0',
-          lng: '0',
+          lat: '25.276987',
+          lng: '55.296249',
         },
         address: '',
-        numberOfAppointedPeople: 1,
       });
     }
     setMapInitialized(false);
@@ -316,7 +312,6 @@ export default function DoctorPage() {
           lng: parseFloat(formData.exactLocation.lng),
         },
         address: formData.address,
-        numberOfAppointedPeople: formData.numberOfAppointedPeople,
       };
 
       const response = await fetch(url, {
@@ -519,7 +514,6 @@ export default function DoctorPage() {
                     <TableHead>Specialists</TableHead>
                     <TableHead>Contact Info</TableHead>
                     <TableHead>Location</TableHead>
-                    <TableHead>Capacity</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Appointments</TableHead>
                     <TableHead>Actions</TableHead>
@@ -567,12 +561,6 @@ export default function DoctorPage() {
                           <span className="truncate max-w-[200px]" title={place.address}>
                             {place.address}
                           </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <Users className="h-4 w-4 mr-2 text-blue-500" />
-                          <Badge variant="outline">{place.numberOfAppointedPeople} people</Badge>
                         </div>
                       </TableCell>
                       <TableCell>{getStatusBadge(place.status)}</TableCell>
@@ -623,7 +611,6 @@ export default function DoctorPage() {
               lng: '55.296249',
             },
             address: '',
-            numberOfAppointedPeople: 1,
           });
           setSelectedPlace(null);
           setSearchQuery('');
@@ -710,23 +697,6 @@ export default function DoctorPage() {
                       value={formData.address}
                       onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                       placeholder="Enter full address"
-                      className="mt-1"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="numberOfAppointedPeople" className="text-sm font-medium">
-                      Default Capacity <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="numberOfAppointedPeople"
-                      type="number"
-                      min="1"
-                      max="20"
-                      value={formData.numberOfAppointedPeople}
-                      onChange={(e) => setFormData({ ...formData, numberOfAppointedPeople: parseInt(e.target.value) || 1 })}
-                      placeholder="Enter default capacity"
                       className="mt-1"
                       required
                     />

@@ -171,7 +171,6 @@ export async function POST(
       status = "ACTIVE",
       exactLocation = { lat: 0.0, lng: 0.0 },
       address,
-      numberOfAppointedPeople = 1,
     } = body;
 
     const appointmentTypeName = params.appointmentType.toLowerCase();
@@ -228,7 +227,6 @@ export async function POST(
         status: status.toUpperCase(),
         exactLocation: exactLocation,
         address: address.trim(),
-        numberOfAppointedPeople: Number.parseInt(String(numberOfAppointedPeople), 10) || 1,
       },
       include: {
         appointmentType: {
@@ -273,7 +271,6 @@ export async function PUT(
       status,
       exactLocation,
       address,
-      numberOfAppointedPeople,
     } = body;
 
     const appointmentTypeName = params.appointmentType.toLowerCase();
@@ -362,10 +359,6 @@ export async function PUT(
 
     if (address) {
       updateData.address = address.trim();
-    }
-
-    if (numberOfAppointedPeople !== undefined) {
-      updateData.numberOfAppointedPeople = Number.parseInt(String(numberOfAppointedPeople), 10) || 1;
     }
 
     // Update the appointment place

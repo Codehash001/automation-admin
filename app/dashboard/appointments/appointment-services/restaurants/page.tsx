@@ -29,7 +29,6 @@ interface RestaurantPlace {
     lng: number;
   };
   address: string;
-  numberOfAppointedPeople: number;
   _count?: {
     appointments: number;
   };
@@ -66,7 +65,6 @@ export default function RestaurantsPage() {
       lng: '55.296249',
     },
     address: '',
-    numberOfAppointedPeople: 2, // Default table size for restaurants
   });
 
   // Fetch restaurant places
@@ -266,7 +264,6 @@ export default function RestaurantsPage() {
           lng: place.exactLocation.lng.toString(),
         },
         address: place.address,
-        numberOfAppointedPeople: place.numberOfAppointedPeople,
       });
     } else {
       setSelectedPlace(null);
@@ -280,7 +277,6 @@ export default function RestaurantsPage() {
           lng: '55.296249',
         },
         address: '',
-        numberOfAppointedPeople: 2, // Default table size for restaurants
       });
     }
     setMapInitialized(false);
@@ -310,7 +306,6 @@ export default function RestaurantsPage() {
           lng: parseFloat(formData.exactLocation.lng),
         },
         address: formData.address,
-        numberOfAppointedPeople: formData.numberOfAppointedPeople,
       };
 
       const response = await fetch(url, {
@@ -461,7 +456,6 @@ export default function RestaurantsPage() {
                     <TableHead>Restaurant Name</TableHead>
                     <TableHead>Contact Info</TableHead>
                     <TableHead>Location</TableHead>
-                    <TableHead>Table Size</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Reservations</TableHead>
                     <TableHead>Actions</TableHead>
@@ -483,14 +477,6 @@ export default function RestaurantsPage() {
                           <span className="truncate max-w-[200px]" title={place.address}>
                             {place.address}
                           </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center">
-                          <Users className="h-4 w-4 mr-2 text-blue-500" />
-                          <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-                            {place.numberOfAppointedPeople} people
-                          </Badge>
                         </div>
                       </TableCell>
                       <TableCell>{getStatusBadge(place.status)}</TableCell>
@@ -540,7 +526,6 @@ export default function RestaurantsPage() {
               lng: '55.296249',
             },
             address: '',
-            numberOfAppointedPeople: 2,
           });
           setMapInitialized(false);
           setSearchQuery('');
@@ -602,20 +587,6 @@ export default function RestaurantsPage() {
                       value={formData.address}
                       onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                       placeholder="Full Address"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="numberOfAppointedPeople" className="text-sm font-medium">Default Table Size <span className="text-red-500">*</span></Label>
-                    <Input
-                      id="numberOfAppointedPeople"
-                      type="number"
-                      min="1"
-                      max="20"
-                      value={formData.numberOfAppointedPeople}
-                      onChange={(e) => setFormData({ ...formData, numberOfAppointedPeople: parseInt(e.target.value) || 2 })}
-                      placeholder="Number of people"
                       required
                     />
                   </div>

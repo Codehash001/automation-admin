@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { customerId, appointmentPlaceId, appointmentDate, status, numberOfTables, appointmentSetter, specialistName } = body;
+    const { customerId, appointmentPlaceId, appointmentDate, status, numberOfGuests, appointmentSetter, specialistName } = body;
 
     // Validate required fields
     if (!customerId || !appointmentPlaceId || !appointmentDate) {
@@ -220,10 +220,10 @@ export async function POST(request: NextRequest) {
         status: status || "SCHEDULED",
         ...(appointmentSetter ? { appointmentSetter } : {}),
         ...(normalizedSpecialistName ? { specialistName: normalizedSpecialistName } : {}),
-        // numberOfTables is only relevant for Restaurant appointments
+        // numberOfGuests is only relevant for Restaurant appointments
         ...(appointmentPlace.appointmentType?.name?.toLowerCase() === 'restaurant'
-          ? (typeof numberOfTables === 'number' && Number.isFinite(numberOfTables) && numberOfTables > 0
-              ? { numberOfTables: Math.floor(numberOfTables) }
+          ? (typeof numberOfGuests === 'number' && Number.isFinite(numberOfGuests) && numberOfGuests > 0
+              ? { numberOfGuests: Math.floor(numberOfGuests) }
               : {})
           : {}),
       },
@@ -265,7 +265,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, customerId, appointmentPlaceId, appointmentDate, status, numberOfTables, appointmentSetter } = body;
+    const { id, customerId, appointmentPlaceId, appointmentDate, status, numberOfGuests, appointmentSetter } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -329,7 +329,7 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // Handle numberOfTables updates only for Restaurant appointments
+    // Handle numberOfGuests updates only for Restaurant appointments
     const effectivePlaceType = appointmentPlaceId
       ? (await prisma.appointmentPlace.findUnique({
           where: { id: parseInt(appointmentPlaceId) },
@@ -337,25 +337,25 @@ export async function PUT(request: NextRequest) {
         }))?.appointmentType?.name?.toLowerCase()
       : existingAppointment.appointmentPlace.appointmentType?.name?.toLowerCase();
 
-    if (typeof numberOfTables !== 'undefined') {
+    if (typeof numberOfGuests !== 'undefined') {
       if (effectivePlaceType === 'restaurant') {
         if (
-          typeof numberOfTables === 'number' &&
-          Number.isFinite(numberOfTables) &&
-          numberOfTables > 0
+          typeof numberOfGuests === 'number' &&
+          Number.isFinite(numberOfGuests) &&
+          numberOfGuests > 0
         ) {
-          updateData.numberOfTables = Math.floor(numberOfTables);
-        } else if (numberOfTables === null) {
+          updateData.numberOfGuests = Math.floor(numberOfGuests);
+        } else if (numberOfGuests === null) {
           // Allow clearing
-          updateData.numberOfTables = null;
+          updateData.numberOfGuests = null;
         } else {
           return NextResponse.json(
-            { error: 'numberOfTables must be a positive integer for restaurant appointments' },
+            { error: 'numberOfGuests must be a positive integer for restaurant appointments' },
             { status: 400 }
           );
         }
       } else {
-        // Ignore numberOfTables for non-restaurant appointments
+        // Ignore numberOfGuests for non-restaurant appointments
       }
     }
 

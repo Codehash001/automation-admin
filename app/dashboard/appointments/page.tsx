@@ -16,13 +16,13 @@ interface Appointment {
   id: number;
   appointmentDate: string;
   status: string;
-  numberOfTables?: number | null;
+  numberOfGuests?: number | null;
   appointmentSetter?: string | null;
   specialistName?: string | null;
   customer: {
     id: number;
     name: string;
-    phone: string;
+    whatsappNumber: string;
   };
   appointmentPlace: {
     id: number;
@@ -42,7 +42,7 @@ interface Appointment {
 interface Customer {
   id: number;
   name: string;
-  phone: string;
+  whatsappNumber: string;
 }
 
 interface AppointmentType {
@@ -81,7 +81,7 @@ export default function AppointmentsPage() {
     appointmentPlaceId: '',
     appointmentDate: '',
     status: 'PENDING',
-    numberOfTables: '', // only for Restaurant
+    numberOfGuests: '', // only for Restaurant
     appointmentSetter: '',
   });
 
@@ -205,10 +205,10 @@ export default function AppointmentsPage() {
         // Adjusted so the input shows the exact UTC time stored in DB, without local TZ shift
         appointmentDate: localForInput,
         status: appointment.status,
-        numberOfTables:
+        numberOfGuests:
           appointment.appointmentPlace.appointmentType.name.toLowerCase() === 'restaurant' &&
-          typeof appointment.numberOfTables === 'number'
-            ? String(appointment.numberOfTables)
+          typeof appointment.numberOfGuests === 'number'
+            ? String(appointment.numberOfGuests)
             : '',
         appointmentSetter: appointment.appointmentSetter || '',
       });
@@ -219,7 +219,7 @@ export default function AppointmentsPage() {
         appointmentPlaceId: '',
         appointmentDate: '',
         status: 'SCHEDULED',
-        numberOfTables: '',
+        numberOfGuests: '',
         appointmentSetter: '',
       });
     }
@@ -234,7 +234,7 @@ export default function AppointmentsPage() {
       appointmentPlaceId: '',
       appointmentDate: '',
       status: 'SCHEDULED',
-      numberOfTables: '',
+      numberOfGuests: '',
       appointmentSetter: '',
     });
   };
@@ -276,16 +276,16 @@ export default function AppointmentsPage() {
       };
 
       if (isRestaurant) {
-        if (formData.numberOfTables) {
-          const num = parseInt(formData.numberOfTables, 10);
+        if (formData.numberOfGuests) {
+          const num = parseInt(formData.numberOfGuests, 10);
           if (!Number.isFinite(num) || num <= 0) {
-            throw new Error('Number of tables must be a positive integer');
+            throw new Error('Number of guests must be a positive integer');
           }
-          payload.numberOfTables = num;
+          payload.numberOfGuests = num;
         }
       } else if (selectedAppointment) {
         // For non-restaurant updates, explicitly clear if previously set
-        payload.numberOfTables = null;
+        payload.numberOfGuests = null;
       }
 
       const response = await fetch(url, {
@@ -435,7 +435,7 @@ export default function AppointmentsPage() {
                   <SelectItem value="all">All Customers</SelectItem>
                   {customers.map((customer) => (
                     <SelectItem key={customer.id} value={customer.id.toString()}>
-                      {customer.name}
+                      {customer.name} - {customer.whatsappNumber}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -516,7 +516,7 @@ export default function AppointmentsPage() {
                         <div>
                           <div>{appointment.customer.name}</div>
                           <div className="text-sm text-muted-foreground">
-                            {appointment.customer.phone}
+                            {appointment.customer.whatsappNumber}
                           </div>
                           <span className="ml-2 text-xs text-muted-foreground sm:hidden">(ID: {appointment.id})</span>
                         </div>
@@ -539,9 +539,9 @@ export default function AppointmentsPage() {
                             {appointment.appointmentPlace.address}
                           </div>
                           {appointment.appointmentPlace.appointmentType.name.toLowerCase() === 'restaurant' &&
-                            typeof appointment.numberOfTables === 'number' && (
+                            typeof appointment.numberOfGuests === 'number' && (
                               <div className="text-xs mt-1">
-                                Reserved tables: {appointment.numberOfTables}
+                                Guests: {appointment.numberOfGuests}
                               </div>
                             )}
                         </div>
@@ -617,7 +617,7 @@ export default function AppointmentsPage() {
                 <SelectContent>
                   {customers.map((customer) => (
                     <SelectItem key={customer.id} value={customer.id.toString()}>
-                      {customer.name} - {customer.phone}
+                      {customer.name} - {customer.whatsappNumber}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -649,14 +649,14 @@ export default function AppointmentsPage() {
               if (!isRestaurant) return null;
               return (
                 <div className="space-y-2">
-                  <Label htmlFor="numberOfTables">Number of Tables</Label>
+                  <Label htmlFor="numberOfGuests">Number of Guests</Label>
                   <Input
-                    id="numberOfTables"
+                    id="numberOfGuests"
                     type="number"
                     min={1}
-                    value={formData.numberOfTables}
-                    onChange={(e) => setFormData({ ...formData, numberOfTables: e.target.value })}
-                    placeholder="Enter number of tables"
+                    value={formData.numberOfGuests}
+                    onChange={(e) => setFormData({ ...formData, numberOfGuests: e.target.value })}
+                    placeholder="Enter number of guests"
                   />
                 </div>
               );
