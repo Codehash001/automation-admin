@@ -374,6 +374,7 @@ model AppointmentPlace {
   whatsappNo              String // WhatsApp number for the service provider
   status                  String          @default("ACTIVE") // ACTIVE, INACTIVE
   exactLocation           Json            @default("{\"lat\": 0.0, \"lng\": 0.0}")
+  operatingHours          Json            @default("{\"open\": \"00:00\", \"close\": \"00:00\"}") // new non-breaking operating hours
   address                 String
   appointments            Appointment[]
   createdAt               DateTime        @default(now())

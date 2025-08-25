@@ -25,7 +25,7 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     const includeAppointments = searchParams.get("includeAppointments") === "true";
-    const status = searchParams.get("status");
+    const status = searchParams.get("status"); // legacy status (ACTIVE/INACTIVE)
     const appointmentTypeName = params.appointmentType.toLowerCase();
 
     // First, find the appointment type by name
@@ -97,9 +97,12 @@ export async function GET(
       appointmentTypeId: appointmentType.id,
     };
 
+    // Backward-compatibility filter on legacy string status if provided
     if (status) {
       whereClause.status = status.toUpperCase();
     }
+
+    // serviceStatus removed from schema; no filtering here
 
     // Otherwise, fetch all appointment places for this type
     const appointmentPlaces = await prisma.appointmentPlace.findMany({
@@ -170,6 +173,7 @@ export async function POST(
       whatsappNo,
       status = "ACTIVE",
       exactLocation = { lat: 0.0, lng: 0.0 },
+      operatingHours, // { open: "HH:mm", close: "HH:mm" } (optional)
       address,
     } = body;
 
@@ -216,18 +220,25 @@ export async function POST(
     }
 
     // Create the appointment place
+    const createData: any = {
+      name: name.trim(),
+      appointmentTypeId: appointmentType.id,
+      specialistNames: normalizeSpecialists(
+        typeof specialistNames !== 'undefined' ? specialistNames : specialistName
+      ),
+      whatsappNo: whatsappNo.trim(),
+      status: status.toUpperCase(),
+      exactLocation: exactLocation,
+      address: address.trim(),
+    };
+
+    // serviceStatus removed from schema; nothing to add
+    if (operatingHours && typeof operatingHours === 'object') {
+      createData.operatingHours = operatingHours;
+    }
+
     const appointmentPlace = await prisma.appointmentPlace.create({
-      data: {
-        name: name.trim(),
-        appointmentTypeId: appointmentType.id,
-        specialistNames: normalizeSpecialists(
-          typeof specialistNames !== 'undefined' ? specialistNames : specialistName
-        ),
-        whatsappNo: whatsappNo.trim(),
-        status: status.toUpperCase(),
-        exactLocation: exactLocation,
-        address: address.trim(),
-      },
+      data: createData,
       include: {
         appointmentType: {
           select: {
@@ -270,6 +281,7 @@ export async function PUT(
       whatsappNo,
       status,
       exactLocation,
+      operatingHours,
       address,
     } = body;
 
@@ -353,8 +365,14 @@ export async function PUT(
       updateData.status = status.toUpperCase();
     }
 
+    // serviceStatus removed from schema; skip updates
+
     if (exactLocation) {
       updateData.exactLocation = exactLocation;
+    }
+
+    if (operatingHours && typeof operatingHours === 'object') {
+      updateData.operatingHours = operatingHours;
     }
 
     if (address) {

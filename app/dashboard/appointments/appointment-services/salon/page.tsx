@@ -25,6 +25,10 @@ interface SalonPlace {
   specialistNames?: string[]; // new array field
   whatsappNo: string;
   status: 'ACTIVE' | 'INACTIVE';
+  operatingHours?: {
+    open: string;
+    close: string;
+  };
   exactLocation: {
     lat: number;
     lng: number;
@@ -66,6 +70,10 @@ export default function SalonPage() {
     specialistName: '',
     whatsappNo: '',
     status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
+    operatingHours: {
+      open: '09:00',
+      close: '18:00',
+    },
     exactLocation: {
       lat: '25.276987',
       lng: '55.296249',
@@ -286,6 +294,10 @@ export default function SalonPage() {
         specialistName: place.specialistName || '',
         whatsappNo: place.whatsappNo,
         status: place.status,
+        operatingHours: {
+          open: place.operatingHours?.open || '09:00',
+          close: place.operatingHours?.close || '18:00',
+        },
         exactLocation: {
           lat: place.exactLocation.lat.toString(),
           lng: place.exactLocation.lng.toString(),
@@ -299,6 +311,10 @@ export default function SalonPage() {
         specialistName: '',
         whatsappNo: '',
         status: 'ACTIVE',
+        operatingHours: {
+          open: '09:00',
+          close: '18:00',
+        },
         exactLocation: {
           lat: '25.276987',
           lng: '55.296249',
@@ -328,6 +344,7 @@ export default function SalonPage() {
         specialistName: formData.specialistName || null,
         whatsappNo: formData.whatsappNo,
         status: formData.status,
+        operatingHours: formData.operatingHours,
         exactLocation: {
           lat: parseFloat(formData.exactLocation.lat),
           lng: parseFloat(formData.exactLocation.lng),
@@ -535,6 +552,7 @@ export default function SalonPage() {
                     <TableHead>Specialists</TableHead>
                     <TableHead>Contact Info</TableHead>
                     <TableHead>Location</TableHead>
+                    <TableHead>Operating Hours</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Appointments</TableHead>
                     <TableHead>Actions</TableHead>
@@ -570,6 +588,11 @@ export default function SalonPage() {
                             {place.address}
                           </span>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {place.operatingHours?.open && place.operatingHours?.close
+                          ? `${place.operatingHours.open} - ${place.operatingHours.close}`
+                          : '-'}
                       </TableCell>
                       <TableCell>{getStatusBadge(place.status)}</TableCell>
                       <TableCell>
@@ -625,6 +648,10 @@ export default function SalonPage() {
             specialistName: '',
             whatsappNo: '',
             status: 'ACTIVE',
+            operatingHours: {
+              open: '09:00',
+              close: '18:00',
+            },
             exactLocation: {
               lat: '25.276987',
               lng: '55.296249',
@@ -754,6 +781,30 @@ export default function SalonPage() {
                         />
                         Inactive
                       </label>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Operating Hours</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="openTime" className="text-xs text-muted-foreground">Open</Label>
+                        <Input
+                          id="openTime"
+                          type="time"
+                          value={formData.operatingHours.open}
+                          onChange={(e) => setFormData({ ...formData, operatingHours: { ...formData.operatingHours, open: e.target.value } })}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="closeTime" className="text-xs text-muted-foreground">Close</Label>
+                        <Input
+                          id="closeTime"
+                          type="time"
+                          value={formData.operatingHours.close}
+                          onChange={(e) => setFormData({ ...formData, operatingHours: { ...formData.operatingHours, close: e.target.value } })}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

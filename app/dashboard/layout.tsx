@@ -161,7 +161,7 @@ function DashboardContent({
       icon: <CalendarDays size={18} />,
       resource: 'appointments',
       children: [
-        { name: 'All Appointments', href: '/dashboard/appointments', icon: null },
+        { name: 'All Appointments', href: '/dashboard/appointments/all', icon: null },
         { name: 'Appointment Types', href: '/dashboard/appointments/appointment-types', icon: null },
       ],
     },

@@ -25,6 +25,10 @@ interface LegalPlace {
   specialistNames?: string[]; // new array
   whatsappNo: string;
   status: 'ACTIVE' | 'INACTIVE';
+  operatingHours?: {
+    open: string;
+    close: string;
+  };
   exactLocation: {
     lat: number;
     lng: number;
@@ -61,6 +65,10 @@ export default function LegalPage() {
     specialistName: '',
     whatsappNo: '',
     status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
+    operatingHours: {
+      open: '09:00',
+      close: '18:00',
+    },
     exactLocation: {
       lat: '25.276987',
       lng: '55.296249',
@@ -284,6 +292,7 @@ export default function LegalPage() {
         specialistName: place.specialistName || '',
         whatsappNo: place.whatsappNo,
         status: place.status,
+        operatingHours: place.operatingHours || { open: '09:00', close: '18:00' },
         exactLocation: {
           lat: place.exactLocation.lat.toString(),
           lng: place.exactLocation.lng.toString(),
@@ -297,6 +306,7 @@ export default function LegalPage() {
         specialistName: '',
         whatsappNo: '',
         status: 'ACTIVE',
+        operatingHours: { open: '09:00', close: '18:00' },
         exactLocation: {
           lat: '25.276987',
           lng: '55.296249',
@@ -326,6 +336,7 @@ export default function LegalPage() {
         specialistName: formData.specialistName || null,
         whatsappNo: formData.whatsappNo,
         status: formData.status,
+        operatingHours: formData.operatingHours,
         exactLocation: {
           lat: parseFloat(formData.exactLocation.lat),
           lng: parseFloat(formData.exactLocation.lng),
@@ -533,6 +544,7 @@ export default function LegalPage() {
                     <TableHead>Specialists</TableHead>
                     <TableHead>Contact Info</TableHead>
                     <TableHead>Location</TableHead>
+                    <TableHead>Operating Hours</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Consultations</TableHead>
                     <TableHead>Actions</TableHead>
@@ -569,6 +581,11 @@ export default function LegalPage() {
                           </span>
                         </div>
                       </TableCell>
+                      <TableCell>
+                        {place.operatingHours?.open && place.operatingHours?.close
+                          ? `${place.operatingHours.open} - ${place.operatingHours.close}`
+                          : '-'}
+                      </TableCell>
                       <TableCell>{getStatusBadge(place.status)}</TableCell>
                       <TableCell>
                         <Badge variant="outline">
@@ -596,7 +613,6 @@ export default function LegalPage() {
                               <TooltipTrigger asChild>
                                 <Button variant="outline" size="sm" className="h-7 px-2 gap-1" onClick={() => openAddDialog(place)}>
                                   <Plus className="h-4 w-4" />
-                                  <span>Add new</span>
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent>
@@ -624,6 +640,7 @@ export default function LegalPage() {
             specialistName: '',
             whatsappNo: '',
             status: 'ACTIVE',
+            operatingHours: { open: '09:00', close: '18:00' },
             exactLocation: {
               lat: '25.276987',
               lng: '55.296249',
@@ -755,6 +772,32 @@ export default function LegalPage() {
                         />
                         Inactive
                       </label>
+                    </div>
+                  </div>
+
+                  
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Operating Hours</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="openTime" className="text-xs text-muted-foreground">Open</Label>
+                        <Input
+                          id="openTime"
+                          type="time"
+                          value={formData.operatingHours.open}
+                          onChange={(e) => setFormData({ ...formData, operatingHours: { ...formData.operatingHours, open: e.target.value } })}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="closeTime" className="text-xs text-muted-foreground">Close</Label>
+                        <Input
+                          id="closeTime"
+                          type="time"
+                          value={formData.operatingHours.close}
+                          onChange={(e) => setFormData({ ...formData, operatingHours: { ...formData.operatingHours, close: e.target.value } })}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
