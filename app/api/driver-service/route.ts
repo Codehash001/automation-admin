@@ -3,17 +3,25 @@ import { prisma } from '@/lib/prisma';
 import { activeNotifications } from '../deliveries/utils';
 
 // POST /api/driver-service
-// Body: { emirateId: number, category?: 'TRADITIONAL_TAXI'|'LIMOUSINE', customerPhone?: string, pickupLocation?: string, dropoffLocation?: string }
+// Body: { emirateId: number, vehicleTypeId?: number, category?: 'TRADITIONAL_TAXI'|'LIMOUSINE', customerPhone?: string, pickupLocation?: string, dropoffLocation?: string }
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { emirateId, category, customerPhone, pickupLocation, dropoffLocation } = body as any;
+    const { emirateId, vehicleTypeId, category, customerPhone, pickupLocation, dropoffLocation } = body as any;
 
     if (!emirateId) {
       return NextResponse.json({ error: 'emirateId is required' }, { status: 400 });
     }
     if (category && !['TRADITIONAL_TAXI', 'LIMOUSINE'].includes(category)) {
       return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
+    }
+
+    // Validate vehicle type if provided and capture its category
+    let requestedVt: { id: number; category: 'TRADITIONAL_TAXI'|'LIMOUSINE'; name: string; capacity: number } | null = null;
+    if (vehicleTypeId) {
+      const vt = await prisma.vehicleType.findUnique({ where: { id: Number(vehicleTypeId) } });
+      if (!vt) return NextResponse.json({ error: 'Invalid vehicleTypeId' }, { status: 400 });
+      requestedVt = { id: vt.id, category: vt.category as any, name: vt.name, capacity: vt.capacity };
     }
 
     // 1) Create ride request
@@ -23,6 +31,7 @@ export async function POST(request: Request) {
         customerPhone: customerPhone || null,
         pickupLocation: pickupLocation || null,
         dropoffLocation: dropoffLocation || null,
+        requestedVehicleTypeRefId: requestedVt?.id ?? null,
       },
     });
 
@@ -35,7 +44,10 @@ export async function POST(request: Request) {
     let availableRiders: Array<{ id: number; name: string; phone: string; rideServiceCategory?: string | null }>
       = Array.isArray(riders) ? riders : [];
 
-    if (category) {
+    if (requestedVt) {
+      // Exact vehicle type match takes priority
+      availableRiders = availableRiders.filter((r: any) => r.rideVehicleTypeRefId === requestedVt!.id);
+    } else if (category) {
       availableRiders = availableRiders.filter((r: any) => r.rideServiceCategory === category);
     }
 
@@ -61,6 +73,7 @@ export async function POST(request: Request) {
       message: 'Ride request created and rider notification started',
       rideRequestId: ride.id,
       riders: driversData,
+      requestedVehicleType: requestedVt ?? undefined,
     });
   } catch (e) {
     console.error('Error creating ride request:', e);
@@ -79,7 +92,7 @@ export async function GET(request: Request) {
     if (id) {
       const ride = await prisma.rideRequest.findUnique({
         where: { id: Number(id) },
-        include: { driver: true },
+        include: { driver: true, requestedVehicleType: true },
       });
       if (!ride) return NextResponse.json({ error: 'Ride not found' }, { status: 404 });
       return NextResponse.json(ride);
@@ -87,7 +100,7 @@ export async function GET(request: Request) {
 
     const rides = await prisma.rideRequest.findMany({
       where: status ? { status } : undefined,
-      include: { driver: true },
+      include: { driver: true, requestedVehicleType: true },
       orderBy: { createdAt: 'desc' },
     });
     return NextResponse.json(rides);

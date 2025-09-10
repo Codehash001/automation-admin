@@ -66,7 +66,7 @@ interface VehicleTypeOption {
   isActive: boolean;
 }
 
-export default function RidersPage() {
+export default function DeliveryRidersPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [riders, setRiders] = useState<Rider[]>([]);
@@ -137,11 +137,13 @@ export default function RidersPage() {
   }, []);
 
   // Filter riders based on search term
-  const filteredRiders = riders.filter(
-    (rider) =>
-      rider.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      rider.phone.includes(searchTerm)
-  );
+  const filteredRiders = riders
+    .filter((r) => r.driverType === 'DELIVERY')
+    .filter(
+      (rider) =>
+        rider.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        rider.phone.includes(searchTerm)
+    );
 
   // Handle form input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -362,108 +364,10 @@ export default function RidersPage() {
                       />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Driver Type</Label>
-                    <div className="flex space-x-4">
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          name="driverType"
-                          value="DELIVERY"
-                          checked={formData.driverType === 'DELIVERY'}
-                          onChange={() => setFormData(prev => ({ 
-                            ...prev, 
-                            driverType: 'DELIVERY',
-                            // clear ride-specific fields when switching away
-                            rideServiceCategory: null,
-                            rideVehicleType: '',
-                            rideVehicleCapacity: undefined,
-                            rideVehicleTypeRefId: undefined,
-                          }))}
-                          className="h-4 w-4 text-primary"
-                        />
-                        <span>Delivery Rider</span>
-                      </label>
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          name="driverType"
-                          value="RIDE_SERVICE"
-                          checked={formData.driverType === 'RIDE_SERVICE'}
-                          onChange={() => setFormData(prev => ({ ...prev, driverType: 'RIDE_SERVICE' }))}
-                          className="h-4 w-4 text-primary"
-                        />
-                        <span>Ride Service Rider</span>
-                      </label>
-                    </div>
-                  </div>
+                  {/* Driver type is fixed to DELIVERY on this page */}
+                  <input type="hidden" name="driverType" value="DELIVERY" />
 
-                  {formData.driverType === 'RIDE_SERVICE' && (
-                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Vehicle Category</Label>
-                        <div className="flex space-x-4">
-                          <label className="flex items-center space-x-2">
-                            <input
-                              type="radio"
-                              name="rideServiceCategory"
-                              value="TRADITIONAL_TAXI"
-                              checked={formData.rideServiceCategory === 'TRADITIONAL_TAXI'}
-                              onChange={() => setFormData(prev => ({ 
-                                ...prev, 
-                                rideServiceCategory: 'TRADITIONAL_TAXI',
-                                rideVehicleType: '',
-                                rideVehicleCapacity: undefined,
-                              }))}
-                            />
-                            <span>Traditional Taxi</span>
-                          </label>
-                          <label className="flex items-center space-x-2">
-                            <input
-                              type="radio"
-                              name="rideServiceCategory"
-                              value="LIMOUSINE"
-                              checked={formData.rideServiceCategory === 'LIMOUSINE'}
-                              onChange={() => setFormData(prev => ({ 
-                                ...prev, 
-                                rideServiceCategory: 'LIMOUSINE',
-                                rideVehicleType: '',
-                                rideVehicleCapacity: undefined,
-                              }))}
-                            />
-                            <span>Limousine</span>
-                          </label>
-                        </div>
-                      </div>
-
-                      {formData.rideServiceCategory && (
-                        <div className="space-y-2">
-                          <Label>Vehicle Type</Label>
-                          <div className="grid grid-cols-1 gap-2">
-                            {vehicleTypes
-                              .filter(v => v.category === formData.rideServiceCategory && v.isActive)
-                              .map(opt => (
-                              <label key={opt.id} className="flex items-center space-x-2">
-                                <input
-                                  type="radio"
-                                  name="rideVehicleType"
-                                  value={opt.id}
-                                  checked={formData.rideVehicleTypeRefId === opt.id}
-                                  onChange={() => setFormData(prev => ({ 
-                                    ...prev, 
-                                    rideVehicleTypeRefId: opt.id,
-                                    rideVehicleType: opt.name,
-                                    rideVehicleCapacity: opt.capacity,
-                                  }))}
-                                />
-                                <span>{`${opt.name} – ${opt.capacity} people`}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {/* Ride-service vehicle settings are not applicable for Delivery riders and are hidden on this page */}
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
                       <Checkbox
@@ -518,7 +422,7 @@ export default function RidersPage() {
                     Cancel
                   </Button>
                   <Button type="submit">
-                    {selectedRider ? 'Update' : 'Create'} Rider
+                    {selectedRider ? 'Update' : 'Create'} Delivery Rider
                   </Button>
                 </div>
               </form>
@@ -550,7 +454,7 @@ export default function RidersPage() {
                 <TableHead>Service Areas</TableHead>
                 <TableHead>Deliveries</TableHead>
                 <TableHead>Member Since</TableHead>
-                <TableHead>Ride Details</TableHead>
+                {/* Ride Details column removed for Delivery-only page */}
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -582,17 +486,7 @@ export default function RidersPage() {
                         {rider.driverType === 'DELIVERY' ? 'Delivery' : 'Ride Service'}
                       </span>
                     </TableCell>
-                    <TableCell>
-                      {rider.driverType === 'RIDE_SERVICE' ? (
-                        <div className="text-xs text-muted-foreground">
-                          {rider.rideServiceCategory === 'TRADITIONAL_TAXI' ? 'Traditional Taxi' : rider.rideServiceCategory === 'LIMOUSINE' ? 'Limousine' : ''}
-                          {rider.rideVehicleType ? ` • ${rider.rideVehicleType}` : ''}
-                          {rider.rideVehicleCapacity ? ` • ${rider.rideVehicleCapacity} people` : ''}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
+                    {/* Ride details not shown for delivery riders */}
                     <TableCell>
                       <div className="flex items-center">
                         <div className={`h-2 w-2 rounded-full mr-2 ${rider.available ? 'bg-green-500' : 'bg-gray-400'}`} />

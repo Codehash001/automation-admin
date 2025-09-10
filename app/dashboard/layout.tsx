@@ -99,15 +99,25 @@ function DashboardContent({
     },
     {
       name: 'Riders & Drivers',
-      href: '/dashboard/riders',
+      href: '/dashboard/riders-and-drivers',
       icon: <CarTaxiFront size={18} />,
       resource: 'riders',
+      children: [
+        { name: 'Delivery Riders', href: '/dashboard/riders-and-drivers/delivery-riders', icon: null },
+        { name: 'Drivers', href: '/dashboard/riders-and-drivers/drivers', icon: null },
+        { name: 'Vehicle Types', href: '/dashboard/riders-and-drivers/vehicle-types', icon: null },
+      ],
     },
     {
       name: 'Deliveries',
       href: '/dashboard/deliveries',
       icon: <Truck size={18} />,
       resource: 'deliveries',
+    },
+    {
+      name: 'Passenger Rides',
+      href: '/dashboard/passenger-rides',
+      icon: <CarTaxiFront size={18} />,
     },
     {
       name: 'Food',

@@ -194,9 +194,10 @@ model VehicleType {
   name      String
   capacity  Int
   isActive  Boolean            @default(true)
+  drivers   Driver[]
+  requestedByRides RideRequest[]
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
-  drivers   Driver[]
 
   @@unique([category, name])
 }
@@ -233,6 +234,8 @@ model RideRequest {
   dropoffLocation String?
   otp           String?
   otpExpiresAt  DateTime?
+  requestedVehicleType   VehicleType? @relation(fields: [requestedVehicleTypeRefId], references: [id])
+  requestedVehicleTypeRefId Int?
   driver        Driver?             @relation(fields: [driverId], references: [id])
   driverId      Int?
   riderMappings RiderRideMapping[]

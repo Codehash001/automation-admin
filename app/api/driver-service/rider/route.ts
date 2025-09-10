@@ -36,7 +36,7 @@ export async function PATCH(request: Request) {
 
     const ride = await prisma.rideRequest.findUnique({
       where: { id: rideRequestId },
-      include: { driver: true },
+      include: { driver: true, requestedVehicleType: true },
     });
     if (!ride) return NextResponse.json({ error: 'Ride not found' }, { status: 404 });
 
@@ -51,6 +51,12 @@ export async function PATCH(request: Request) {
           dropoffLocation: ride.dropoffLocation || '',
           customerPhone: ride.customerPhone || '',
           status: ride.status,
+          requestedVehicleType: ride.requestedVehicleType ? {
+            id: ride.requestedVehicleType.id,
+            name: ride.requestedVehicleType.name,
+            capacity: ride.requestedVehicleType.capacity,
+            category: ride.requestedVehicleType.category,
+          } : null,
         },
       });
     }
