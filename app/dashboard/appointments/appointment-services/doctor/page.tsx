@@ -25,6 +25,7 @@ interface DoctorPlace {
   specialistNames?: string[]; // new array field
   whatsappNo: string;
   status: 'ACTIVE' | 'INACTIVE';
+  serviceFee?: number | string;
   operatingHours?: {
     open: string;
     close: string;
@@ -70,6 +71,7 @@ export default function DoctorPage() {
     specialistName: '',
     whatsappNo: '',
     status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
+    serviceFee: '10',
     operatingHours: {
       open: '09:00',
       close: '18:00',
@@ -273,6 +275,7 @@ export default function DoctorPage() {
         specialistName: place.specialistName || '',
         whatsappNo: place.whatsappNo,
         status: place.status,
+        serviceFee: (place.serviceFee ?? '10').toString(),
         operatingHours: place.operatingHours || { open: '09:00', close: '18:00' },
         exactLocation: {
           lat: place.exactLocation.lat.toString(),
@@ -287,6 +290,7 @@ export default function DoctorPage() {
         specialistName: '',
         whatsappNo: '',
         status: 'ACTIVE',
+        serviceFee: '10',
         operatingHours: { open: '09:00', close: '18:00' },
         exactLocation: {
           lat: '25.276987',
@@ -317,6 +321,7 @@ export default function DoctorPage() {
         specialistName: formData.specialistName || null,
         whatsappNo: formData.whatsappNo,
         status: formData.status,
+        serviceFee: formData.serviceFee ? parseFloat(formData.serviceFee) : undefined,
         operatingHours: formData.operatingHours,
         exactLocation: {
           lat: parseFloat(formData.exactLocation.lat),
@@ -528,6 +533,7 @@ export default function DoctorPage() {
                     <TableHead>Contact Info</TableHead>
                     <TableHead>Location</TableHead>
                     <TableHead>Operating Hours</TableHead>
+                    <TableHead>Service Fee</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Appointments</TableHead>
                     <TableHead>Actions</TableHead>
@@ -568,6 +574,13 @@ export default function DoctorPage() {
                         {place.operatingHours?.open && place.operatingHours?.close
                           ? `${place.operatingHours.open} - ${place.operatingHours.close}`
                           : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const fee = place.serviceFee ?? 10;
+                          const feeNum = typeof fee === 'string' ? parseFloat(fee) : fee;
+                          return isNaN(feeNum as number) ? 'AED 10.00' : `AED ${(feeNum as number).toFixed(2)}`;
+                        })()}
                       </TableCell>
                       <TableCell>{getStatusBadge(place.status)}</TableCell>
                       <TableCell>
@@ -624,6 +637,7 @@ export default function DoctorPage() {
             specialistName: '',
             whatsappNo: '',
             status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
+            serviceFee: '10',
             operatingHours: { open: '09:00', close: '18:00' },
             exactLocation: {
               lat: '25.276987',
@@ -635,7 +649,12 @@ export default function DoctorPage() {
           setSearchQuery('');
           setSearchResults([]);
           setMapStyle('mapbox://styles/mapbox/streets-v12');
-          
+        
+        // Clean up map
+        setMapInitialized(false);
+        if (mapboxMap.current) {
+          mapboxMap.current.remove();
+          mapboxMap.current = null;
           // Clean up map
           setMapInitialized(false);
           if (mapboxMap.current) {
@@ -646,7 +665,7 @@ export default function DoctorPage() {
             markerRef.current = null;
           }
         }
-      }}>
+      }}}>
         <DialogContent className="max-w-[95vw] max-h-[95vh] w-[95vw] h-[95vh] p-0 overflow-hidden">
           <form onSubmit={handleSubmit} className="flex h-full">
             {/* Left Sidebar with Form */}
@@ -753,6 +772,23 @@ export default function DoctorPage() {
                         className="mt-1"
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="serviceFee" className="text-sm font-medium">
+                      Service Fee (AED) <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="serviceFee"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.serviceFee}
+                      onChange={(e) => setFormData({ ...formData, serviceFee: e.target.value })}
+                      placeholder="10.00"
+                      className="mt-1"
+                      required
+                    />
                   </div>
 
                   <div>

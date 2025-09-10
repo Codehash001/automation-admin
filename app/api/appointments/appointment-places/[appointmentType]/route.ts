@@ -174,6 +174,7 @@ export async function POST(
       status = "ACTIVE",
       exactLocation = { lat: 0.0, lng: 0.0 },
       operatingHours, // { open: "HH:mm", close: "HH:mm" } (optional)
+      serviceFee, // optional decimal (AED)
       address,
     } = body;
 
@@ -229,6 +230,7 @@ export async function POST(
       whatsappNo: whatsappNo.trim(),
       status: status.toUpperCase(),
       exactLocation: exactLocation,
+      serviceFee: typeof serviceFee !== 'undefined' && serviceFee !== null ? Number(serviceFee) : undefined,
       address: address.trim(),
     };
 
@@ -282,6 +284,7 @@ export async function PUT(
       status,
       exactLocation,
       operatingHours,
+      serviceFee,
       address,
     } = body;
 
@@ -377,6 +380,17 @@ export async function PUT(
 
     if (address) {
       updateData.address = address.trim();
+    }
+
+    if (typeof serviceFee !== 'undefined' && serviceFee !== null) {
+      const feeNum = Number(serviceFee);
+      if (!Number.isFinite(feeNum) || feeNum < 0) {
+        return NextResponse.json(
+          { error: 'Invalid serviceFee. It must be a non-negative number.' },
+          { status: 400 }
+        );
+      }
+      updateData.serviceFee = feeNum;
     }
 
     // Update the appointment place

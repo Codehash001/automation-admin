@@ -24,6 +24,7 @@ interface RestaurantPlace {
   specialistNames?: string[]; // new array field
   whatsappNo: string;
   status: 'ACTIVE' | 'INACTIVE';
+  serviceFee?: number | string;
   operatingHours?: {
     open: string;
     close: string;
@@ -64,6 +65,7 @@ export default function RestaurantsPage() {
     specialistName: '',
     whatsappNo: '',
     status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
+    serviceFee: '10',
     operatingHours: {
       open: '09:00',
       close: '18:00',
@@ -267,6 +269,7 @@ export default function RestaurantsPage() {
         specialistName: place.specialistName || '',
         whatsappNo: place.whatsappNo,
         status: place.status,
+        serviceFee: (place.serviceFee ?? '10').toString(),
         operatingHours: {
           open: place.operatingHours?.open || '09:00',
           close: place.operatingHours?.close || '18:00',
@@ -284,6 +287,7 @@ export default function RestaurantsPage() {
         specialistName: '',
         whatsappNo: '',
         status: 'ACTIVE',
+        serviceFee: '10',
         operatingHours: {
           open: '09:00',
           close: '18:00',
@@ -317,6 +321,7 @@ export default function RestaurantsPage() {
         specialistName: formData.specialistName || null,
         whatsappNo: formData.whatsappNo,
         status: formData.status,
+        serviceFee: formData.serviceFee ? parseFloat(formData.serviceFee) : undefined,
         operatingHours: formData.operatingHours,
         exactLocation: {
           lat: parseFloat(formData.exactLocation.lat),
@@ -474,6 +479,7 @@ export default function RestaurantsPage() {
                     <TableHead>Contact Info</TableHead>
                     <TableHead>Location</TableHead>
                     <TableHead>Operating Hours</TableHead>
+                    <TableHead>Service Fee</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Reservations</TableHead>
                     <TableHead>Actions</TableHead>
@@ -501,6 +507,13 @@ export default function RestaurantsPage() {
                         {place.operatingHours?.open && place.operatingHours?.close
                           ? `${place.operatingHours.open} - ${place.operatingHours.close}`
                           : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const fee = (place as any).serviceFee ?? 10;
+                          const feeNum = typeof fee === 'string' ? parseFloat(fee) : fee;
+                          return isNaN(feeNum as number) ? 'AED 10.00' : `AED ${(feeNum as number).toFixed(2)}`;
+                        })()}
                       </TableCell>
                       <TableCell>{getStatusBadge(place.status)}</TableCell>
                       <TableCell>
@@ -544,6 +557,7 @@ export default function RestaurantsPage() {
             specialistName: '',
             whatsappNo: '',
             status: 'ACTIVE',
+            serviceFee: '10',
             operatingHours: {
               open: '09:00',
               close: '18:00',
@@ -641,6 +655,20 @@ export default function RestaurantsPage() {
                         exactLocation: { ...formData.exactLocation, lng: e.target.value }
                       })}
                       placeholder="Click on map to set location"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="serviceFee" className="text-sm font-medium">Service Fee (AED) <span className="text-red-500">*</span></Label>
+                    <Input
+                      id="serviceFee"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.serviceFee}
+                      onChange={(e) => setFormData({ ...formData, serviceFee: e.target.value })}
+                      placeholder="10.00"
+                      required
                     />
                   </div>
 

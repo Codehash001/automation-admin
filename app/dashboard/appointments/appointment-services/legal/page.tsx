@@ -25,6 +25,7 @@ interface LegalPlace {
   specialistNames?: string[]; // new array
   whatsappNo: string;
   status: 'ACTIVE' | 'INACTIVE';
+  serviceFee?: number | string;
   operatingHours?: {
     open: string;
     close: string;
@@ -65,6 +66,7 @@ export default function LegalPage() {
     specialistName: '',
     whatsappNo: '',
     status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
+    serviceFee: '10',
     operatingHours: {
       open: '09:00',
       close: '18:00',
@@ -292,6 +294,7 @@ export default function LegalPage() {
         specialistName: place.specialistName || '',
         whatsappNo: place.whatsappNo,
         status: place.status,
+        serviceFee: (place.serviceFee ?? '10').toString(),
         operatingHours: place.operatingHours || { open: '09:00', close: '18:00' },
         exactLocation: {
           lat: place.exactLocation.lat.toString(),
@@ -306,6 +309,7 @@ export default function LegalPage() {
         specialistName: '',
         whatsappNo: '',
         status: 'ACTIVE',
+        serviceFee: '10',
         operatingHours: { open: '09:00', close: '18:00' },
         exactLocation: {
           lat: '25.276987',
@@ -336,6 +340,7 @@ export default function LegalPage() {
         specialistName: formData.specialistName || null,
         whatsappNo: formData.whatsappNo,
         status: formData.status,
+        serviceFee: formData.serviceFee ? parseFloat(formData.serviceFee) : undefined,
         operatingHours: formData.operatingHours,
         exactLocation: {
           lat: parseFloat(formData.exactLocation.lat),
@@ -545,6 +550,7 @@ export default function LegalPage() {
                     <TableHead>Contact Info</TableHead>
                     <TableHead>Location</TableHead>
                     <TableHead>Operating Hours</TableHead>
+                    <TableHead>Service Fee</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Consultations</TableHead>
                     <TableHead>Actions</TableHead>
@@ -585,6 +591,13 @@ export default function LegalPage() {
                         {place.operatingHours?.open && place.operatingHours?.close
                           ? `${place.operatingHours.open} - ${place.operatingHours.close}`
                           : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const fee = place.serviceFee ?? 10;
+                          const feeNum = typeof fee === 'string' ? parseFloat(fee) : fee;
+                          return isNaN(feeNum as number) ? 'AED 10.00' : `AED ${(feeNum as number).toFixed(2)}`;
+                        })()}
                       </TableCell>
                       <TableCell>{getStatusBadge(place.status)}</TableCell>
                       <TableCell>
