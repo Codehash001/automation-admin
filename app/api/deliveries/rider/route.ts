@@ -112,6 +112,16 @@ export async function PATCH(request: Request) {
               include: {
                 emirates: true
               }
+            },
+            groceryStore: {
+              include: {
+                emirates: true
+              }
+            },
+            medicalStore: {
+              include: {
+                emirates: true
+              }
             }
           }
         }
@@ -132,6 +142,13 @@ export async function PATCH(request: Request) {
       const latitude = locationParts[0]?.trim() || '';
       const longitude = locationParts[1]?.trim() || '';
       
+      // Determine the correct store entity based on order category/relations
+      const outletEntity: any =
+        delivery.order.outlet ??
+        delivery.order.groceryStore ??
+        delivery.order.medicalStore ??
+        null;
+      
       return NextResponse.json({
         success: true,
         message: 'Order details retrieved for review',
@@ -147,10 +164,10 @@ export async function PATCH(request: Request) {
             buildingType: delivery.order.buildingType
           },
           outletLocation: {
-            name: delivery.order.outlet?.name,
-            phone: delivery.order.outlet?.whatsappNo,
-            emirate: delivery.order.outlet?.emirates.name,
-            location: delivery.order.outlet?.exactLocation // GPS coordinates as JSON object
+            name: outletEntity?.name,
+            phone: outletEntity?.whatsappNo,
+            emirate: outletEntity?.emirates?.name,
+            location: outletEntity?.exactLocation // GPS coordinates as JSON object
           },
           deliveryInfo: {
             deliveryId: delivery.id,
