@@ -234,20 +234,21 @@ export async function GET(request: Request) {
         };
       }).sort((a: any, b: any) => a.distance - b.distance);
 
-      if (responseType === 'objectArray') {
-        return NextResponse.json(storesWithDistance);
+      // Default to detailed object array (to match grocery store API)
+      if (responseType === 'array') {
+        // Legacy array format (for backward compatibility)
+        const storeArray = storesWithDistance.map((store: any) => [
+          store.id,
+          store.name,
+          store.whatsappNo,
+          store.emirates.name,
+          store.distance
+        ]);
+        return NextResponse.json(storeArray);
       }
 
-      // Return array format (for backward compatibility)
-      const storeArray = storesWithDistance.map((store: any) => [
-        store.id,
-        store.name,
-        store.whatsappNo,
-        store.emirates.name,
-        store.distance
-      ]);
-
-      return NextResponse.json(storeArray);
+      // Detailed object array by default
+      return NextResponse.json(storesWithDistance);
     }
 
     // Get all stores with filtering

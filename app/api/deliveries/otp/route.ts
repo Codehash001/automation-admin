@@ -76,6 +76,8 @@ export async function PUT(req: Request) {
           include: {
             customer: true,
             outlet: true,
+            groceryStore: true,
+            medicalStore: true,
             emirates: true,
           },
         },
@@ -90,6 +92,9 @@ export async function PUT(req: Request) {
       );
     }
 
+
+    // Normalize store entity (outlet/groceryStore/medicalStore)
+    const store: any = delivery.order.outlet ?? delivery.order.groceryStore ?? delivery.order.medicalStore ?? null;
 
     return NextResponse.json({
       success: true,
@@ -114,11 +119,11 @@ export async function PUT(req: Request) {
             location: delivery.order.deliveryLocation,
             address: delivery.order.deliveryAddress,
           },
-          outlet: {
-            id: delivery.order.outlet?.id,
-            name: delivery.order.outlet?.name,
-            address: delivery.order.outlet?.exactLocation,
-          },
+          outlet: store ? {
+            id: store.id,
+            name: store.name,
+            address: store.exactLocation,
+          } : null,
           emirates: delivery.order.emirates,
         },
         createdAt: delivery.createdAt,

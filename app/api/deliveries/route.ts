@@ -271,6 +271,8 @@ export async function GET(request: Request) {
             include: {
               customer: true,
               outlet: true,
+              groceryStore: true,
+              medicalStore: true,
               emirates: true,
             }
           },
@@ -295,6 +297,8 @@ export async function GET(request: Request) {
           include: {
             customer: true,
             outlet: true,
+            groceryStore: true,
+            medicalStore: true,
             emirates: true
           }
         },

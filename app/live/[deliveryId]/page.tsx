@@ -269,7 +269,12 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
         return parsed ? parsed : null;
       };
       
-      const outletLocation = processLocation(data.order.outlet?.location);
+      // Determine store entity (outlet/groceryStore/medicalStore)
+      const storeEntity = (data.order.outlet ?? data.order.groceryStore ?? data.order.medicalStore) || null;
+      const outletLocation = processLocation(
+        // Prefer exactLocation (object) if present, otherwise fallback to outlet.location string
+        storeEntity?.exactLocation || data.order.outlet?.location
+      );
       const customerLocation = processLocation(data.order.deliveryLocation);
       
       // Update state with new data
@@ -278,10 +283,15 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
         _lastUpdated: new Date().toISOString(),
         order: {
           ...data.order,
-          outlet: {
-            ...data.order.outlet,
-            location: outletLocation ? `${outletLocation.lat},${outletLocation.lng}` : data.order.outlet?.location
-          },
+          // Normalize outlet representation for UI consumption
+          outlet: storeEntity ? {
+            id: storeEntity.id,
+            name: storeEntity.name,
+            // Keep address for display; may be JSON or string
+            address: storeEntity.exactLocation ?? data.order.outlet?.address,
+            // Provide location as "lat,lng" if we could parse it
+            location: outletLocation ? `${outletLocation.lat},${outletLocation.lng}` : (data.order.outlet?.location || null)
+          } : data.order.outlet,
           deliveryLocation: customerLocation ? `${customerLocation.lat},${customerLocation.lng}` : data.order.deliveryLocation
         }
       };
@@ -616,19 +626,34 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
   // Update delivery status
   const updateDeliveryStatus = async (status: string) => {
     try {
-      const response = await fetch(`/api/deliveries`, {
-        method: 'PATCH',
+      // Map UI statuses to API statuses
+      const apiStatus = status === 'PICKED_UP' ? 'IN_TRANSIT' : status; // DELIVERED stays DELIVERED
+      const response = await fetch(`/api/deliveries/status`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: parseInt(params.deliveryId),
-          status
+          deliveryId: parseInt(params.deliveryId),
+          status: apiStatus
         })
       });
-      
-      if (!response.ok) throw new Error('Failed to update delivery status');
-      
-      const data = await response.json();
-      setDeliveryDetails(prev => prev ? { ...prev, status } : null);
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to update delivery status');
+      }
+
+      const result = await response.json();
+      const updated = result.data;
+
+      // Update local state: reflect delivery status from API, and keep an internal order.status for UI flow
+      setDeliveryDetails(prev => prev ? {
+        ...prev,
+        status: updated.status,
+        order: {
+          ...prev.order,
+          status: status === 'PICKED_UP' ? 'PICKED_UP' : 'COMPLETED'
+        }
+      } : null);
       
       toast({
         title: status === 'PICKED_UP' ? "Order Picked Up" : "Order Delivered",
@@ -637,7 +662,7 @@ export default function LiveLocationSharing({ params }: { params: { deliveryId: 
           : "Delivery completed successfully!",
       });
       
-      return data;
+      return updated;
       
     } catch (error) {
       console.error('Error updating delivery status:', error);
