@@ -653,6 +653,7 @@ export default function LegalPage() {
             specialistName: '',
             whatsappNo: '',
             status: 'ACTIVE',
+            serviceFee: '10',
             operatingHours: { open: '09:00', close: '18:00' },
             exactLocation: {
               lat: '25.276987',
