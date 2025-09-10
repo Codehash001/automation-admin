@@ -40,6 +40,9 @@ interface Rider {
   phone: string;
   available: boolean;
   driverType: 'DELIVERY' | 'RIDE_SERVICE';
+  rideServiceCategory?: 'TRADITIONAL_TAXI' | 'LIMOUSINE' | null;
+  rideVehicleType?: string | null;
+  rideVehicleCapacity?: number | null;
   emirates: {
     emirate: {
       id: number;
@@ -68,7 +71,23 @@ export default function RidersPage() {
     available: true,
     driverType: 'DELIVERY' as 'DELIVERY' | 'RIDE_SERVICE',
     emirateIds: [] as number[],
+    rideServiceCategory: null as null | 'TRADITIONAL_TAXI' | 'LIMOUSINE',
+    rideVehicleType: '' as string,
+    rideVehicleCapacity: undefined as number | undefined,
   });
+
+  // Ride service vehicle options
+  const TAXI_TYPES: { label: string; value: string; capacity: number }[] = [
+    { label: 'Sedan – 4 people', value: 'Sedan', capacity: 4 },
+    { label: 'SUV – 6 people', value: 'SUV', capacity: 6 },
+    { label: 'Van – 8 people', value: 'Van', capacity: 8 },
+    { label: 'Mini Bus – 12 people', value: 'Mini Bus', capacity: 12 },
+  ];
+  // Example limo types (can be extended later)
+  const LIMO_TYPES: { label: string; value: string; capacity: number }[] = [
+    { label: 'Standard Limo – 6 people', value: 'Standard Limo', capacity: 6 },
+    { label: 'Stretch Limo – 10 people', value: 'Stretch Limo', capacity: 10 },
+  ];
 
   // Fetch riders and emirates
   const fetchData = async () => {
@@ -148,7 +167,21 @@ export default function RidersPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          // Normalize ride fields: only send when RIDE_SERVICE
+          ...(formData.driverType === 'RIDE_SERVICE'
+            ? {
+                rideServiceCategory: formData.rideServiceCategory,
+                rideVehicleType: formData.rideVehicleType || undefined,
+                rideVehicleCapacity: formData.rideVehicleCapacity,
+              }
+            : {
+                rideServiceCategory: null,
+                rideVehicleType: null,
+                rideVehicleCapacity: null,
+              }),
+        }),
       });
 
       if (!response.ok) {
@@ -169,7 +202,10 @@ export default function RidersPage() {
         phone: '', 
         available: true, 
         driverType: 'DELIVERY',
-        emirateIds: [] 
+        emirateIds: [],
+        rideServiceCategory: null,
+        rideVehicleType: '',
+        rideVehicleCapacity: undefined,
       });
       setSelectedRider(null);
       setIsDialogOpen(false);
@@ -193,6 +229,9 @@ export default function RidersPage() {
       available: rider.available,
       driverType: rider.driverType,
       emirateIds: rider.emirates.map(e => e.emirate.id),
+      rideServiceCategory: rider.rideServiceCategory ?? null,
+      rideVehicleType: rider.rideVehicleType ?? '',
+      rideVehicleCapacity: rider.rideVehicleCapacity ?? undefined,
     });
     setIsDialogOpen(true);
   };
@@ -315,7 +354,14 @@ export default function RidersPage() {
                           name="driverType"
                           value="DELIVERY"
                           checked={formData.driverType === 'DELIVERY'}
-                          onChange={() => setFormData(prev => ({ ...prev, driverType: 'DELIVERY' }))}
+                          onChange={() => setFormData(prev => ({ 
+                            ...prev, 
+                            driverType: 'DELIVERY',
+                            // clear ride-specific fields when switching away
+                            rideServiceCategory: null,
+                            rideVehicleType: '',
+                            rideVehicleCapacity: undefined,
+                          }))}
                           className="h-4 w-4 text-primary"
                         />
                         <span>Delivery Rider</span>
@@ -333,6 +379,70 @@ export default function RidersPage() {
                       </label>
                     </div>
                   </div>
+
+                  {formData.driverType === 'RIDE_SERVICE' && (
+                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Vehicle Category</Label>
+                        <div className="flex space-x-4">
+                          <label className="flex items-center space-x-2">
+                            <input
+                              type="radio"
+                              name="rideServiceCategory"
+                              value="TRADITIONAL_TAXI"
+                              checked={formData.rideServiceCategory === 'TRADITIONAL_TAXI'}
+                              onChange={() => setFormData(prev => ({ 
+                                ...prev, 
+                                rideServiceCategory: 'TRADITIONAL_TAXI',
+                                rideVehicleType: '',
+                                rideVehicleCapacity: undefined,
+                              }))}
+                            />
+                            <span>Traditional Taxi</span>
+                          </label>
+                          <label className="flex items-center space-x-2">
+                            <input
+                              type="radio"
+                              name="rideServiceCategory"
+                              value="LIMOUSINE"
+                              checked={formData.rideServiceCategory === 'LIMOUSINE'}
+                              onChange={() => setFormData(prev => ({ 
+                                ...prev, 
+                                rideServiceCategory: 'LIMOUSINE',
+                                rideVehicleType: '',
+                                rideVehicleCapacity: undefined,
+                              }))}
+                            />
+                            <span>Limousine</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {formData.rideServiceCategory && (
+                        <div className="space-y-2">
+                          <Label>Vehicle Type</Label>
+                          <div className="grid grid-cols-1 gap-2">
+                            {(formData.rideServiceCategory === 'TRADITIONAL_TAXI' ? TAXI_TYPES : LIMO_TYPES).map(opt => (
+                              <label key={opt.value} className="flex items-center space-x-2">
+                                <input
+                                  type="radio"
+                                  name="rideVehicleType"
+                                  value={opt.value}
+                                  checked={formData.rideVehicleType === opt.value}
+                                  onChange={() => setFormData(prev => ({ 
+                                    ...prev, 
+                                    rideVehicleType: opt.value,
+                                    rideVehicleCapacity: opt.capacity,
+                                  }))}
+                                />
+                                <span>{opt.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
                       <Checkbox
@@ -376,7 +486,10 @@ export default function RidersPage() {
                         phone: '', 
                         available: true, 
                         driverType: 'DELIVERY',
-                        emirateIds: [] 
+                        emirateIds: [],
+                        rideServiceCategory: null,
+                        rideVehicleType: '',
+                        rideVehicleCapacity: undefined,
                       });
                     }}
                   >
@@ -415,13 +528,14 @@ export default function RidersPage() {
                 <TableHead>Service Areas</TableHead>
                 <TableHead>Deliveries</TableHead>
                 <TableHead>Member Since</TableHead>
+                <TableHead>Ride Details</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
+                  <TableCell colSpan={9} className="h-24 text-center">
                     Loading...
                   </TableCell>
                 </TableRow>
@@ -445,6 +559,17 @@ export default function RidersPage() {
                       }`}>
                         {rider.driverType === 'DELIVERY' ? 'Delivery' : 'Ride Service'}
                       </span>
+                    </TableCell>
+                    <TableCell>
+                      {rider.driverType === 'RIDE_SERVICE' ? (
+                        <div className="text-xs text-muted-foreground">
+                          {rider.rideServiceCategory === 'TRADITIONAL_TAXI' ? 'Traditional Taxi' : rider.rideServiceCategory === 'LIMOUSINE' ? 'Limousine' : ''}
+                          {rider.rideVehicleType ? ` • ${rider.rideVehicleType}` : ''}
+                          {rider.rideVehicleCapacity ? ` • ${rider.rideVehicleCapacity} people` : ''}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center">

@@ -73,6 +73,9 @@ export async function GET(request: Request) {
           phone: true,
           available: true,
           driverType: true,
+          rideServiceCategory: true,
+          rideVehicleType: true,
+          rideVehicleCapacity: true,
           emirates: {
             include: {
               emirate: true,
@@ -115,7 +118,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { name, phone, emirateIds, available = true, driverType = 'DELIVERY' } = await request.json();
+    const body = await request.json();
+    const { name, phone, emirateIds, available = true, driverType = 'DELIVERY' } = body;
+    let { rideServiceCategory, rideVehicleType, rideVehicleCapacity } = body as any;
 
     // Validate input
     if (!name || !phone) {
@@ -131,6 +136,34 @@ export async function POST(request: Request) {
         { error: 'Invalid driver type' },
         { status: 400 }
       );
+    }
+
+    // If ride service, validate required ride metadata
+    if (driverType === 'RIDE_SERVICE') {
+      if (!rideServiceCategory || !['TRADITIONAL_TAXI', 'LIMOUSINE'].includes(rideServiceCategory)) {
+        return NextResponse.json(
+          { error: 'rideServiceCategory must be TRADITIONAL_TAXI or LIMOUSINE for ride service riders' },
+          { status: 400 }
+        );
+      }
+      if (!rideVehicleType || typeof rideVehicleType !== 'string') {
+        return NextResponse.json(
+          { error: 'rideVehicleType is required for ride service riders' },
+          { status: 400 }
+        );
+      }
+      if (rideVehicleCapacity === undefined || rideVehicleCapacity === null || isNaN(Number(rideVehicleCapacity))) {
+        return NextResponse.json(
+          { error: 'rideVehicleCapacity (number) is required for ride service riders' },
+          { status: 400 }
+        );
+      }
+      rideVehicleCapacity = Number(rideVehicleCapacity);
+    } else {
+      // Non ride-service: ensure ride fields are null
+      rideServiceCategory = null;
+      rideVehicleType = null;
+      rideVehicleCapacity = null;
     }
 
     // Check if rider with this phone already exists
@@ -151,6 +184,9 @@ export async function POST(request: Request) {
         phone,
         available,
         driverType: driverType as DriverType,
+        rideServiceCategory: rideServiceCategory || undefined,
+        rideVehicleType: rideVehicleType || undefined,
+        rideVehicleCapacity: rideVehicleCapacity ?? undefined,
         emirates: emirateIds?.length > 0 ? {
           create: emirateIds.map((id: number) => ({
             emirate: {
@@ -190,7 +226,9 @@ export async function PUT(request: Request) {
       );
     }
 
-    const { name, phone, emirateIds, available, driverType } = await request.json();
+    const body = await request.json();
+    const { name, phone, emirateIds, available, driverType } = body;
+    let { rideServiceCategory, rideVehicleType, rideVehicleCapacity } = body as any;
 
     // Check if rider exists
     const existingRider = await prisma.driver.findUnique({
@@ -210,6 +248,31 @@ export async function PUT(request: Request) {
         { error: 'Invalid driver type' },
         { status: 400 }
       );
+    }
+
+    // If updating to or remaining as ride service, validate ride fields if any provided
+    const nextDriverType = (driverType || existingRider.driverType) as DriverType;
+    if (nextDriverType === 'RIDE_SERVICE') {
+      if (rideServiceCategory && !['TRADITIONAL_TAXI', 'LIMOUSINE'].includes(rideServiceCategory)) {
+        return NextResponse.json(
+          { error: 'rideServiceCategory must be TRADITIONAL_TAXI or LIMOUSINE' },
+          { status: 400 }
+        );
+      }
+      if (rideVehicleCapacity !== undefined && rideVehicleCapacity !== null) {
+        rideVehicleCapacity = Number(rideVehicleCapacity);
+        if (isNaN(rideVehicleCapacity)) {
+          return NextResponse.json(
+            { error: 'rideVehicleCapacity must be a number' },
+            { status: 400 }
+          );
+        }
+      }
+    } else {
+      // If switching away from ride service, clear ride fields
+      rideServiceCategory = null;
+      rideVehicleType = null;
+      rideVehicleCapacity = null;
     }
 
     // Check if phone is being updated to a number that already exists
@@ -237,6 +300,15 @@ export async function PUT(request: Request) {
         phone,
         available,
         ...(driverType && { driverType: driverType as DriverType }),
+        ...(nextDriverType === 'RIDE_SERVICE' ? {
+          rideServiceCategory: rideServiceCategory ?? undefined,
+          rideVehicleType: rideVehicleType ?? undefined,
+          rideVehicleCapacity: rideVehicleCapacity ?? undefined,
+        } : {
+          rideServiceCategory: null,
+          rideVehicleType: null,
+          rideVehicleCapacity: null,
+        }),
         ...(emirateIds && {
           emirates: {
             deleteMany: {}, // Remove all existing emirate connections

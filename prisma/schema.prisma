@@ -162,12 +162,21 @@ enum DriverType {
   RIDE_SERVICE
 }
 
+enum RideServiceCategory {
+  TRADITIONAL_TAXI
+  LIMOUSINE
+}
+
 model Driver {
   id           Int             @id @default(autoincrement())
   name         String
   phone        String          @unique
   available    Boolean         @default(true)
   driverType   DriverType      @default(DELIVERY)
+  // Ride service specific metadata (only used when driverType = RIDE_SERVICE)
+  rideServiceCategory RideServiceCategory?
+  rideVehicleType     String?
+  rideVehicleCapacity Int?
   liveLocation String?         @default("") // Google Maps URL for live location
   emirates     DriverEmirate[]
   deliveries   Delivery[]
