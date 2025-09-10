@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+
 import { useRouter } from 'next/navigation';
 import { Plus, Search, Pencil, Trash2, Phone, User, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -43,6 +44,7 @@ interface Rider {
   rideServiceCategory?: 'TRADITIONAL_TAXI' | 'LIMOUSINE' | null;
   rideVehicleType?: string | null;
   rideVehicleCapacity?: number | null;
+  rideVehicleTypeRefId?: number | null;
   emirates: {
     emirate: {
       id: number;
@@ -53,6 +55,15 @@ interface Rider {
     deliveries: number;
   };
   createdAt: string;
+}
+
+type RideServiceCategory = 'TRADITIONAL_TAXI' | 'LIMOUSINE';
+interface VehicleTypeOption {
+  id: number;
+  category: RideServiceCategory;
+  name: string;
+  capacity: number;
+  isActive: boolean;
 }
 
 export default function RidersPage() {
@@ -74,20 +85,21 @@ export default function RidersPage() {
     rideServiceCategory: null as null | 'TRADITIONAL_TAXI' | 'LIMOUSINE',
     rideVehicleType: '' as string,
     rideVehicleCapacity: undefined as number | undefined,
+    rideVehicleTypeRefId: undefined as number | undefined,
   });
+  const [vehicleTypes, setVehicleTypes] = useState<VehicleTypeOption[]>([]);
 
-  // Ride service vehicle options
-  const TAXI_TYPES: { label: string; value: string; capacity: number }[] = [
-    { label: 'Sedan – 4 people', value: 'Sedan', capacity: 4 },
-    { label: 'SUV – 6 people', value: 'SUV', capacity: 6 },
-    { label: 'Van – 8 people', value: 'Van', capacity: 8 },
-    { label: 'Mini Bus – 12 people', value: 'Mini Bus', capacity: 12 },
-  ];
-  // Example limo types (can be extended later)
-  const LIMO_TYPES: { label: string; value: string; capacity: number }[] = [
-    { label: 'Standard Limo – 6 people', value: 'Standard Limo', capacity: 6 },
-    { label: 'Stretch Limo – 10 people', value: 'Stretch Limo', capacity: 10 },
-  ];
+  const fetchVehicleTypes = async () => {
+    try {
+      const res = await fetch('/api/driver-service/vehicle-types');
+      if (!res.ok) throw new Error('Failed to load vehicle types');
+      const data = await res.json();
+      setVehicleTypes(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      // Do not toast destructively here to avoid noisy UI when not needed
+    }
+  };
 
   // Fetch riders and emirates
   const fetchData = async () => {
@@ -121,6 +133,7 @@ export default function RidersPage() {
 
   useEffect(() => {
     fetchData();
+    fetchVehicleTypes();
   }, []);
 
   // Filter riders based on search term
@@ -175,11 +188,13 @@ export default function RidersPage() {
                 rideServiceCategory: formData.rideServiceCategory,
                 rideVehicleType: formData.rideVehicleType || undefined,
                 rideVehicleCapacity: formData.rideVehicleCapacity,
+                rideVehicleTypeRefId: formData.rideVehicleTypeRefId,
               }
             : {
                 rideServiceCategory: null,
                 rideVehicleType: null,
                 rideVehicleCapacity: null,
+                rideVehicleTypeRefId: null,
               }),
         }),
       });
@@ -206,6 +221,7 @@ export default function RidersPage() {
         rideServiceCategory: null,
         rideVehicleType: '',
         rideVehicleCapacity: undefined,
+        rideVehicleTypeRefId: undefined,
       });
       setSelectedRider(null);
       setIsDialogOpen(false);
@@ -232,6 +248,7 @@ export default function RidersPage() {
       rideServiceCategory: rider.rideServiceCategory ?? null,
       rideVehicleType: rider.rideVehicleType ?? '',
       rideVehicleCapacity: rider.rideVehicleCapacity ?? undefined,
+      rideVehicleTypeRefId: rider.rideVehicleTypeRefId ?? undefined,
     });
     setIsDialogOpen(true);
   };
@@ -361,6 +378,7 @@ export default function RidersPage() {
                             rideServiceCategory: null,
                             rideVehicleType: '',
                             rideVehicleCapacity: undefined,
+                            rideVehicleTypeRefId: undefined,
                           }))}
                           className="h-4 w-4 text-primary"
                         />
@@ -422,20 +440,23 @@ export default function RidersPage() {
                         <div className="space-y-2">
                           <Label>Vehicle Type</Label>
                           <div className="grid grid-cols-1 gap-2">
-                            {(formData.rideServiceCategory === 'TRADITIONAL_TAXI' ? TAXI_TYPES : LIMO_TYPES).map(opt => (
-                              <label key={opt.value} className="flex items-center space-x-2">
+                            {vehicleTypes
+                              .filter(v => v.category === formData.rideServiceCategory && v.isActive)
+                              .map(opt => (
+                              <label key={opt.id} className="flex items-center space-x-2">
                                 <input
                                   type="radio"
                                   name="rideVehicleType"
-                                  value={opt.value}
-                                  checked={formData.rideVehicleType === opt.value}
+                                  value={opt.id}
+                                  checked={formData.rideVehicleTypeRefId === opt.id}
                                   onChange={() => setFormData(prev => ({ 
                                     ...prev, 
-                                    rideVehicleType: opt.value,
+                                    rideVehicleTypeRefId: opt.id,
+                                    rideVehicleType: opt.name,
                                     rideVehicleCapacity: opt.capacity,
                                   }))}
                                 />
-                                <span>{opt.label}</span>
+                                <span>{`${opt.name} – ${opt.capacity} people`}</span>
                               </label>
                             ))}
                           </div>
@@ -490,6 +511,7 @@ export default function RidersPage() {
                         rideServiceCategory: null,
                         rideVehicleType: '',
                         rideVehicleCapacity: undefined,
+                        rideVehicleTypeRefId: undefined,
                       });
                     }}
                   >

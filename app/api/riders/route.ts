@@ -76,6 +76,7 @@ export async function GET(request: Request) {
           rideServiceCategory: true,
           rideVehicleType: true,
           rideVehicleCapacity: true,
+          rideVehicleTypeRefId: true,
           emirates: {
             include: {
               emirate: true,
@@ -120,7 +121,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { name, phone, emirateIds, available = true, driverType = 'DELIVERY' } = body;
-    let { rideServiceCategory, rideVehicleType, rideVehicleCapacity } = body as any;
+    let { rideServiceCategory, rideVehicleType, rideVehicleCapacity, rideVehicleTypeRefId } = body as any;
 
     // Validate input
     if (!name || !phone) {
@@ -146,24 +147,34 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
-      if (!rideVehicleType || typeof rideVehicleType !== 'string') {
-        return NextResponse.json(
-          { error: 'rideVehicleType is required for ride service riders' },
-          { status: 400 }
-        );
+      // If refId provided, derive fields from VehicleType
+      if (rideVehicleTypeRefId) {
+        const vt = await prisma.vehicleType.findUnique({ where: { id: Number(rideVehicleTypeRefId) } });
+        if (!vt) return NextResponse.json({ error: 'Invalid vehicle type' }, { status: 400 });
+        if (vt.category !== rideServiceCategory) return NextResponse.json({ error: 'Vehicle type category mismatch' }, { status: 400 });
+        rideVehicleType = vt.name;
+        rideVehicleCapacity = vt.capacity;
+      } else {
+        if (!rideVehicleType || typeof rideVehicleType !== 'string') {
+          return NextResponse.json(
+            { error: 'rideVehicleType is required for ride service riders' },
+            { status: 400 }
+          );
+        }
+        if (rideVehicleCapacity === undefined || rideVehicleCapacity === null || isNaN(Number(rideVehicleCapacity))) {
+          return NextResponse.json(
+            { error: 'rideVehicleCapacity (number) is required for ride service riders' },
+            { status: 400 }
+          );
+        }
+        rideVehicleCapacity = Number(rideVehicleCapacity);
       }
-      if (rideVehicleCapacity === undefined || rideVehicleCapacity === null || isNaN(Number(rideVehicleCapacity))) {
-        return NextResponse.json(
-          { error: 'rideVehicleCapacity (number) is required for ride service riders' },
-          { status: 400 }
-        );
-      }
-      rideVehicleCapacity = Number(rideVehicleCapacity);
     } else {
       // Non ride-service: ensure ride fields are null
       rideServiceCategory = null;
       rideVehicleType = null;
       rideVehicleCapacity = null;
+      rideVehicleTypeRefId = null;
     }
 
     // Check if rider with this phone already exists
@@ -187,6 +198,7 @@ export async function POST(request: Request) {
         rideServiceCategory: rideServiceCategory || undefined,
         rideVehicleType: rideVehicleType || undefined,
         rideVehicleCapacity: rideVehicleCapacity ?? undefined,
+        ...(rideVehicleTypeRefId ? { rideVehicleTypeRef: { connect: { id: Number(rideVehicleTypeRefId) } } } : {}),
         emirates: emirateIds?.length > 0 ? {
           create: emirateIds.map((id: number) => ({
             emirate: {
@@ -228,7 +240,7 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
     const { name, phone, emirateIds, available, driverType } = body;
-    let { rideServiceCategory, rideVehicleType, rideVehicleCapacity } = body as any;
+    let { rideServiceCategory, rideVehicleType, rideVehicleCapacity, rideVehicleTypeRefId } = body as any;
 
     // Check if rider exists
     const existingRider = await prisma.driver.findUnique({
@@ -259,7 +271,15 @@ export async function PUT(request: Request) {
           { status: 400 }
         );
       }
-      if (rideVehicleCapacity !== undefined && rideVehicleCapacity !== null) {
+      if (rideVehicleTypeRefId) {
+        const vt = await prisma.vehicleType.findUnique({ where: { id: Number(rideVehicleTypeRefId) } });
+        if (!vt) return NextResponse.json({ error: 'Invalid vehicle type' }, { status: 400 });
+        if (rideServiceCategory && vt.category !== rideServiceCategory) return NextResponse.json({ error: 'Vehicle type category mismatch' }, { status: 400 });
+        // Derive from vt if provided
+        rideServiceCategory = vt.category;
+        rideVehicleType = vt.name;
+        rideVehicleCapacity = vt.capacity;
+      } else if (rideVehicleCapacity !== undefined && rideVehicleCapacity !== null) {
         rideVehicleCapacity = Number(rideVehicleCapacity);
         if (isNaN(rideVehicleCapacity)) {
           return NextResponse.json(
@@ -273,6 +293,7 @@ export async function PUT(request: Request) {
       rideServiceCategory = null;
       rideVehicleType = null;
       rideVehicleCapacity = null;
+      rideVehicleTypeRefId = null;
     }
 
     // Check if phone is being updated to a number that already exists
@@ -304,10 +325,14 @@ export async function PUT(request: Request) {
           rideServiceCategory: rideServiceCategory ?? undefined,
           rideVehicleType: rideVehicleType ?? undefined,
           rideVehicleCapacity: rideVehicleCapacity ?? undefined,
+          ...(rideVehicleTypeRefId !== undefined ? {
+            rideVehicleTypeRef: rideVehicleTypeRefId ? { connect: { id: Number(rideVehicleTypeRefId) } } : { disconnect: true }
+          } : {}),
         } : {
           rideServiceCategory: null,
           rideVehicleType: null,
           rideVehicleCapacity: null,
+          rideVehicleTypeRef: { disconnect: true },
         }),
         ...(emirateIds && {
           emirates: {

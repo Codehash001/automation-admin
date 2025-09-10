@@ -177,11 +177,28 @@ model Driver {
   rideServiceCategory RideServiceCategory?
   rideVehicleType     String?
   rideVehicleCapacity Int?
+  rideVehicleTypeRef  VehicleType?     @relation(fields: [rideVehicleTypeRefId], references: [id])
+  rideVehicleTypeRefId Int?
   liveLocation String?         @default("") // Google Maps URL for live location
   emirates     DriverEmirate[]
   deliveries   Delivery[]
+  rideRequests RideRequest[]
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
+}
+
+// Configurable vehicle types for ride service (e.g., Sedan 4p, SUV 6p, etc.)
+model VehicleType {
+  id        Int                 @id @default(autoincrement())
+  category  RideServiceCategory
+  name      String
+  capacity  Int
+  isActive  Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  drivers   Driver[]
+
+  @@unique([category, name])
 }
 
 model DriverEmirate {
@@ -207,6 +224,20 @@ model Delivery {
   updatedAt     DateTime               @updatedAt
 }
 
+// Human ride request (for taxi/limousine). Mirrors Delivery flow but without Order link
+model RideRequest {
+  id            Int                 @id @default(autoincrement())
+  status        String              @default("PENDING")
+  customerPhone String?
+  pickupAddress String?
+  dropoffAddress String?
+  driver        Driver?             @relation(fields: [driverId], references: [id])
+  driverId      Int?
+  riderMappings RiderRideMapping[]
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+}
+
 model RiderDeliveryMapping {
   id         Int      @id @default(autoincrement())
   phone      String   @unique @default("")
@@ -214,6 +245,15 @@ model RiderDeliveryMapping {
   delivery   Delivery @relation(fields: [deliveryId], references: [id])
   expiresAt  DateTime @default(now())
   createdAt  DateTime @default(now())
+}
+
+model RiderRideMapping {
+  id            Int          @id @default(autoincrement())
+  phone         String       @unique @default("")
+  rideRequestId Int
+  rideRequest   RideRequest  @relation(fields: [rideRequestId], references: [id])
+  expiresAt     DateTime     @default(now())
+  createdAt     DateTime     @default(now())
 }
 
 model Rating {
