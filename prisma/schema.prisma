@@ -229,8 +229,10 @@ model RideRequest {
   id            Int                 @id @default(autoincrement())
   status        String              @default("PENDING")
   customerPhone String?
-  pickupAddress String?
-  dropoffAddress String?
+  pickupLocation String?
+  dropoffLocation String?
+  otp           String?
+  otpExpiresAt  DateTime?
   driver        Driver?             @relation(fields: [driverId], references: [id])
   driverId      Int?
   riderMappings RiderRideMapping[]

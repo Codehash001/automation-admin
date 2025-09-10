@@ -47,8 +47,8 @@ export async function PATCH(request: Request) {
         message: 'Ride details retrieved for review',
         rideDetails: {
           rideRequestId: ride.id,
-          pickupAddress: ride.pickupAddress || '',
-          dropoffAddress: ride.dropoffAddress || '',
+          pickupLocation: ride.pickupLocation || '',
+          dropoffLocation: ride.dropoffLocation || '',
           customerPhone: ride.customerPhone || '',
           status: ride.status,
         },

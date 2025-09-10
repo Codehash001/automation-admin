@@ -3,11 +3,11 @@ import { prisma } from '@/lib/prisma';
 import { activeNotifications } from '../deliveries/utils';
 
 // POST /api/driver-service
-// Body: { emirateId: number, category?: 'TRADITIONAL_TAXI'|'LIMOUSINE', customerPhone?: string, pickupAddress?: string, dropoffAddress?: string }
+// Body: { emirateId: number, category?: 'TRADITIONAL_TAXI'|'LIMOUSINE', customerPhone?: string, pickupLocation?: string, dropoffLocation?: string }
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { emirateId, category, customerPhone, pickupAddress, dropoffAddress } = body as any;
+    const { emirateId, category, customerPhone, pickupLocation, dropoffLocation } = body as any;
 
     if (!emirateId) {
       return NextResponse.json({ error: 'emirateId is required' }, { status: 400 });
@@ -21,8 +21,8 @@ export async function POST(request: Request) {
       data: {
         status: 'PENDING',
         customerPhone: customerPhone || null,
-        pickupAddress: pickupAddress || null,
-        dropoffAddress: dropoffAddress || null,
+        pickupLocation: pickupLocation || null,
+        dropoffLocation: dropoffLocation || null,
       },
     });
 
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     startRideNotificationLoop(
       ride.id,
       driversData,
-      { customerPhone: customerPhone || '', pickupAddress: pickupAddress || '', dropoffAddress: dropoffAddress || '' }
+      { customerPhone: customerPhone || '', pickupLocation: pickupLocation || '', dropoffLocation: dropoffLocation || '' }
     );
 
     return NextResponse.json({
@@ -97,10 +97,50 @@ export async function GET(request: Request) {
   }
 }
 
+// PATCH /api/driver-service
+// Body: { id: number (rideRequestId), liveLocation: { latitude: number, longitude: number } }
+export async function PATCH(request: Request) {
+  try {
+    const { id, liveLocation } = await request.json();
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Ride request ID is required' },
+        { status: 400 }
+      );
+    }
+
+    if (!liveLocation || !liveLocation.latitude || !liveLocation.longitude) {
+      return NextResponse.json(
+        { error: 'Live location with latitude and longitude is required' },
+        { status: 400 }
+      );
+    }
+
+    const ride = await prisma.rideRequest.findUnique({
+      where: { id: Number(id) },
+      include: { driver: true },
+    });
+    if (!ride) return NextResponse.json({ error: 'Ride not found' }, { status: 404 });
+    if (!ride.driver) return NextResponse.json({ error: 'No driver assigned to this ride' }, { status: 400 });
+
+    const locationString = `${liveLocation.latitude},${liveLocation.longitude}`;
+    await prisma.driver.update({
+      where: { id: ride.driver.id },
+      data: { liveLocation: locationString, updatedAt: new Date() },
+    });
+
+    return NextResponse.json({ success: true, message: 'Driver live location updated' });
+  } catch (e) {
+    console.error('Error updating driver live location:', e);
+    return NextResponse.json({ error: 'Failed to update driver live location' }, { status: 500 });
+  }
+}
+
 function startRideNotificationLoop(
   rideRequestId: number,
   drivers: Array<{ id: number; phone: string; name: string }>,
-  context: { customerPhone: string; pickupAddress: string; dropoffAddress: string }
+  context: { customerPhone: string; pickupLocation: string; dropoffLocation: string }
 ) {
   if (!drivers.length) {
     console.log(`No available drivers for ride ${rideRequestId}`);
@@ -136,8 +176,8 @@ function startRideNotificationLoop(
               sub_flow_ns: RIDE_SUB_FLOW_NS,
               rideRequestId: rideRequestId.toString(),
               driverName: driver.name,
-              pickupAddress: context.pickupAddress,
-              dropoffAddress: context.dropoffAddress,
+              pickupLocation: context.pickupLocation,
+              dropoffLocation: context.dropoffLocation,
             }),
             signal: AbortSignal.timeout(10000),
           });
