@@ -183,6 +183,7 @@ model Driver {
   emirates     DriverEmirate[]
   deliveries   Delivery[]
   rideRequests RideRequest[]
+  rideFaresEntered RideFare[]
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 }
@@ -241,6 +242,7 @@ model RideRequest {
   riderMappings RiderRideMapping[]
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
+  fare          RideFare?
 }
 
 model RiderDeliveryMapping {
@@ -259,6 +261,19 @@ model RiderRideMapping {
   rideRequest   RideRequest  @relation(fields: [rideRequestId], references: [id])
   expiresAt     DateTime     @default(now())
   createdAt     DateTime     @default(now())
+}
+
+// Per-trip fare entered by the driver (one-to-one with RideRequest)
+model RideFare {
+  id               Int          @id @default(autoincrement())
+  rideRequest      RideRequest  @relation(fields: [rideRequestId], references: [id])
+  rideRequestId    Int          @unique
+  amount           Decimal      @db.Decimal(10, 2)
+  currency         String       @default("AED")
+  enteredBy        Driver?      @relation(fields: [enteredByDriverId], references: [id])
+  enteredByDriverId Int?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 }
 
 model Rating {

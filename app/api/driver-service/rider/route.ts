@@ -42,13 +42,27 @@ export async function PATCH(request: Request) {
 
     // REVIEWING → return details
     if (status === 'REVIEWING') {
+      const toLatLng = (s?: string | null) => {
+        if (!s) return null as null | { latitude: number; longitude: number };
+        const parts = s.split(',');
+        if (parts.length !== 2) return null;
+        const lat = parseFloat(parts[0].trim());
+        const lng = parseFloat(parts[1].trim());
+        if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+        return { latitude: lat, longitude: lng };
+      };
+
       return NextResponse.json({
         success: true,
         message: 'Ride details retrieved for review',
         rideDetails: {
           rideRequestId: ride.id,
-          pickupLocation: ride.pickupLocation || '',
-          dropoffLocation: ride.dropoffLocation || '',
+          // New object format for easier consumption
+          pickupLocation: toLatLng(ride.pickupLocation),
+          dropoffLocation: toLatLng(ride.dropoffLocation),
+          // Legacy string fields kept for backward compatibility
+          pickupLocationString: ride.pickupLocation || '',
+          dropoffLocationString: ride.dropoffLocation || '',
           customerPhone: ride.customerPhone || '',
           status: ride.status,
           requestedVehicleType: ride.requestedVehicleType ? {
