@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { LayoutDashboard, Users, ShoppingCart, Truck, Utensils, ChevronDown, ChevronRight, ShoppingBag, Pill , MapPinned , CarTaxiFront , Store, Calendar, CalendarDays, Scissors, Stethoscope, Scale, UtensilsCrossed, LogOut, User, Shield, Settings } from 'lucide-react';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
@@ -209,7 +209,8 @@ function DashboardContent({
         <nav className="flex-1 overflow-y-auto">
           <ul className="p-4 space-y-2">
             {menuItems.map((item: any) => (
-              <li key={item.name}>
+              <Fragment key={item.name}>
+              <li>
                 {item.children ? (
                   <>
                     <button
@@ -262,6 +263,13 @@ function DashboardContent({
                   </Link>
                 )}
               </li>
+              {/* Separators between logical groups */}
+              {['Riders & Drivers', 'Appointments', 'Appointment Services'].includes(item.name) && (
+                <li aria-hidden="true" className="px-2">
+                  <div className="my-3 border-t border-gray-200" />
+                </li>
+              )}
+              </Fragment>
             ))}
           </ul>
         </nav>
