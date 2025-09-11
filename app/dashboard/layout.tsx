@@ -105,7 +105,7 @@ function DashboardContent({
       children: [
         { name: 'Delivery Riders', href: '/dashboard/riders-and-drivers/delivery-riders', icon: null },
         { name: 'Drivers', href: '/dashboard/riders-and-drivers/drivers', icon: null },
-        { name: 'Vehicle Types', href: '/dashboard/riders-and-drivers/vehicle-types', icon: null },
+        { name: 'Vehicle Types', href: '/dashboard/riders-and-drivers/drivers-vehicle-types', icon: null },
       ],
     },
     {
