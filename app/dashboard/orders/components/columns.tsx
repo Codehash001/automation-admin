@@ -30,6 +30,16 @@ const toNumber = (value: number | string | PrismaDecimal | null | undefined): nu
   return 0;
 };
 
+// Helper to format order type nicely (e.g., SELF_PICK_UP -> Self Pick Up)
+const formatOrderType = (val: string | null | undefined) => {
+  if (!val) return 'N/A';
+  return val
+    .toString()
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
 const statusVariant = {
   PENDING: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200',
   ACCEPTED: 'bg-blue-100 text-blue-800 hover:bg-blue-200',
@@ -56,7 +66,12 @@ export const columns: ColumnDef<Order>[] = [
   {
     accessorKey: 'outlet',
     header: 'Outlet',
-    cell: ({ row }) => row.original.outlet?.name || 'N/A',
+    cell: ({ row }) =>
+      row.original.outlet?.name ||
+      // Fallbacks for grocery/medicine orders
+      (row.original as any)?.groceryStore?.name ||
+      (row.original as any)?.medicalStore?.name ||
+      'N/A',
   },
   {
     accessorKey: 'items',
@@ -64,11 +79,17 @@ export const columns: ColumnDef<Order>[] = [
     cell: ({ row }) => (
       <div className="space-y-1">
         {row.original.items?.map((item: OrderItem) => {
-          const price = toNumber(item.price);
+          const price = toNumber((item as any)?.price);
+          const itemName =
+            (item as any)?.menuItem?.name ||
+            (item as any)?.foodMenuItem?.name ||
+            (item as any)?.groceryMenuItem?.name ||
+            (item as any)?.medicineMenuItem?.name ||
+            'Unknown Item';
           return (
             <div key={item.id} className="flex justify-between">
               <span>
-                {item.quantity}x {item.menuItem?.name || 'Unknown Item'}
+                {item.quantity}x {itemName}
               </span>
               <span className="ml-4">AED {price.toFixed(2)}</span>
             </div>
@@ -76,6 +97,20 @@ export const columns: ColumnDef<Order>[] = [
         })}
       </div>
     ),
+  },
+  // Subtotal column added before Total
+  {
+    accessorKey: 'subtotal',
+    header: 'Subtotal',
+    cell: ({ row }) => {
+      // Use provided subtotal if available; otherwise compute from items
+      const provided = (row.original as any)?.subtotal;
+      const computed = (row.original.items || []).reduce((sum, item: any) => {
+        return sum + toNumber(item.price) * (toNumber(item.quantity) || 0);
+      }, 0);
+      const val = toNumber(provided ?? computed);
+      return `AED ${val.toFixed(2)}`;
+    },
   },
   {
     accessorKey: 'total',
@@ -89,8 +124,18 @@ export const columns: ColumnDef<Order>[] = [
     accessorKey: 'category',
     header: 'Category',
     cell: ({ row }) => {
-      const category = row.getValue("category") as string | null;
-      return <div className="font-medium">{category || 'N/A'}</div>;
+      const categoryRaw = (row.original as any)?.category as string | null;
+      const orderTypeRaw = (row.original as any)?.orderType as string | null;
+      const category = (categoryRaw || 'N/A').toString().toLowerCase();
+      const orderType = formatOrderType(orderTypeRaw || '');
+      return (
+        <div className="flex flex-col">
+          <span className="font-medium">{category}</span>
+          {orderType && orderType !== 'N/A' && (
+            <span className="text-xs text-gray-500">{orderType}</span>
+          )}
+        </div>
+      );
     },
   },
   {
