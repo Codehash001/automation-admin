@@ -15,9 +15,21 @@ export async function GET() {
         },
         emirates: true,
         outlet: true,
+        groceryStore: true,
+        medicalStore: true,
         items: {
           include: {
             menuItem: true
+          }
+        },
+        groceryItems: {
+          include: {
+            groceryMenuItem: true,
+          }
+        },
+        medicineItems: {
+          include: {
+            medicineMenuItem: true,
           }
         },
         delivery: {
@@ -119,11 +131,23 @@ export async function POST(request: Request) {
         customer: true,
         emirates: true,
         outlet: true,
+        groceryStore: true,
+        medicalStore: true,
         items: {
           include: {
             menuItem: true
           }
-        }
+        },
+        groceryItems: {
+          include: {
+            groceryMenuItem: true,
+          }
+        },
+        medicineItems: {
+          include: {
+            medicineMenuItem: true,
+          }
+        },
       }
     });
 
@@ -171,9 +195,21 @@ export async function PUT(request: Request) {
         customer: true,
         emirates: true,
         outlet: true,
+        groceryStore: true,
+        medicalStore: true,
         items: {
           include: {
             menuItem: true
+          }
+        },
+        groceryItems: {
+          include: {
+            groceryMenuItem: true,
+          }
+        },
+        medicineItems: {
+          include: {
+            medicineMenuItem: true,
           }
         },
         delivery: {

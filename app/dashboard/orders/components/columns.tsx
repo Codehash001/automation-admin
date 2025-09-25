@@ -59,55 +59,95 @@ export const columns: ColumnDef<Order>[] = [
     cell: ({ row }) => (
       <div>
         <div className="font-medium">{row.original.customer?.name || 'N/A'}</div>
-        <div className="text-sm text-gray-500">{row.original.customer?.phone || 'N/A'}</div>
+        <div className="text-sm text-gray-500">
+          {(row.original as any)?.customer?.whatsappNumber || row.original.customer?.phone || 'N/A'}
+        </div>
       </div>
     ),
   },
   {
     accessorKey: 'outlet',
     header: 'Outlet',
-    cell: ({ row }) =>
-      row.original.outlet?.name ||
-      // Fallbacks for grocery/medicine orders
-      (row.original as any)?.groceryStore?.name ||
-      (row.original as any)?.medicalStore?.name ||
-      'N/A',
+    cell: ({ row }) => {
+      const o: any = row.original as any;
+      const outletName =
+        o?.outlet?.name ||
+        o?.groceryStore?.name ||
+        o?.medicalStore?.name ||
+        // possible alternate keys if API flattened
+        o?.store?.name ||
+        o?.storeName ||
+        o?.outletName ||
+        'N/A';
+      return outletName;
+    },
   },
   {
     accessorKey: 'items',
     header: 'Items',
-    cell: ({ row }) => (
-      <div className="space-y-1">
-        {row.original.items?.map((item: OrderItem) => {
-          const price = toNumber((item as any)?.price);
-          const itemName =
-            (item as any)?.menuItem?.name ||
-            (item as any)?.foodMenuItem?.name ||
-            (item as any)?.groceryMenuItem?.name ||
-            (item as any)?.medicineMenuItem?.name ||
-            'Unknown Item';
-          return (
-            <div key={item.id} className="flex justify-between">
-              <span>
-                {item.quantity}x {itemName}
-              </span>
-              <span className="ml-4">AED {price.toFixed(2)}</span>
-            </div>
-          );
-        })}
-      </div>
-    ),
+    cell: ({ row }) => {
+      // Prefer whichever item array has content based on category
+      const o: any = row.original as any;
+      const foodItems = o?.items || [];
+      const groceryItems = o?.groceryItems || [];
+      const medicineItems = o?.medicineItems || [];
+
+      const chosenItems = foodItems.length
+        ? foodItems
+        : groceryItems.length
+        ? groceryItems
+        : medicineItems;
+
+      if (!chosenItems || chosenItems.length === 0) return 'N/A';
+
+      return (
+        <div className="space-y-1">
+          {chosenItems.map((item: any) => {
+            const qty = toNumber(item?.quantity) || 0;
+            const itemName =
+              // food
+              item?.menuItem?.name ||
+              item?.foodMenuItem?.name ||
+              // grocery
+              item?.groceryMenuItem?.name ||
+              // medicine
+              item?.medicineMenuItem?.name ||
+              // sometimes APIs flatten
+              item?.name ||
+              'Unknown Item';
+            return (
+              <div key={item.id} className="text-sm">
+                {qty}x {itemName}
+              </div>
+            );
+          })}
+        </div>
+      );
+    },
   },
   // Subtotal column added before Total
   {
     accessorKey: 'subtotal',
     header: 'Subtotal',
     cell: ({ row }) => {
-      // Use provided subtotal if available; otherwise compute from items
-      const provided = (row.original as any)?.subtotal;
-      const computed = (row.original.items || []).reduce((sum, item: any) => {
-        return sum + toNumber(item.price) * (toNumber(item.quantity) || 0);
+      // Use provided subtotal if available; otherwise compute from whichever item array has content
+      const o: any = row.original as any;
+      const provided = o?.subtotal;
+
+      const foodItems = o?.items || [];
+      const groceryItems = o?.groceryItems || [];
+      const medicineItems = o?.medicineItems || [];
+
+      const chosenItems = foodItems.length
+        ? foodItems
+        : groceryItems.length
+        ? groceryItems
+        : medicineItems;
+
+      const computed = (chosenItems || []).reduce((sum: number, item: any) => {
+        return sum + toNumber(item?.price) * (toNumber(item?.quantity) || 0);
       }, 0);
+
       const val = toNumber(provided ?? computed);
       return `AED ${val.toFixed(2)}`;
     },
@@ -116,7 +156,7 @@ export const columns: ColumnDef<Order>[] = [
     accessorKey: 'total',
     header: 'Total',
     cell: ({ row }) => {
-      const total = toNumber(row.original.total);
+      const total = toNumber((row.original as any)?.total);
       return `AED ${total.toFixed(2)}`;
     },
   },
@@ -142,7 +182,7 @@ export const columns: ColumnDef<Order>[] = [
     accessorKey: 'location',
     header: 'Location',
     cell: ({ row }) => {
-      const location = row.original.deliveryLocation;
+      const location = (row.original as any)?.deliveryLocation;
       if (!location) return 'N/A';
       
       const [lat, lng] = location.split(',').map(Number);
@@ -164,8 +204,8 @@ export const columns: ColumnDef<Order>[] = [
     accessorKey: 'status',
     header: 'Status',
     cell: ({ row }) => (
-      <Badge className={statusVariant[row.original.status as keyof typeof statusVariant]}>
-        {row.original.status}
+      <Badge className={statusVariant[(row.original as any).status as keyof typeof statusVariant]}>
+        {(row.original as any).status}
       </Badge>
     ),
   },
@@ -180,12 +220,12 @@ export const columns: ColumnDef<Order>[] = [
         <ArrowUpDown className="ml-2 h-4 w-4" />
       </Button>
     ),
-    cell: ({ row }) => format(new Date(row.original.createdAt), 'PPpp'),
+    cell: ({ row }) => format(new Date((row.original as any).createdAt), 'PPpp'),
   },
   {
     id: 'actions',
     cell: ({ row, column }) => {
-      const order = row.original;
+      const order = row.original as any;
       const statuses: OrderStatus[] = ['ACCEPTED', 'PREPARING', 'DELIVERED', 'REJECTED'];
       const onStatusUpdate = (column.columnDef.meta as any)?.onStatusUpdate as (id: number, status: OrderStatus) => void;
       

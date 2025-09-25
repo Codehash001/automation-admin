@@ -47,9 +47,11 @@ export default function OrdersPage() {
           total: typeof total === 'number' ? total : parseFloat(total?.toString() || '0'),
           createdAt: order.createdAt ? new Date(order.createdAt).toLocaleString() : 'N/A',
           locationLink,
-          // Ensure items is always an array
-          items: Array.isArray(order.items) ? order.items : []
-        };
+          // Ensure arrays are present for all categories as per schema
+          items: Array.isArray(order.items) ? order.items : [],
+          groceryItems: Array.isArray(order.groceryItems) ? order.groceryItems : [],
+          medicineItems: Array.isArray(order.medicineItems) ? order.medicineItems : [],
+        } as Order as any;
       });
       
       setOrders(formattedOrders);
