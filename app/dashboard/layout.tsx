@@ -311,14 +311,10 @@ function DashboardContent({
       {/* Main Content */}
       <div className="flex-1 flex flex-col ml-72 h-screen">
         {/* Top navigation */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+        <div className="bg-white px-6 py-4 sticky top-0 z-10">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
-                {pathname === '/dashboard' ? 'Dashboard' : 
-                 pathname.split('/').pop()?.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Dashboard'}
-              </h2>
-              <p className="text-sm text-gray-500 mb-1">
+              <p className=" text-gray-500 mb-1">
                 Welcome back, {user.name}
               </p>
             </div>

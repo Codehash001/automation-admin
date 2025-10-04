@@ -36,6 +36,11 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
     const dateFrom = searchParams.get("dateFrom");
     const dateTo = searchParams.get("dateTo");
+    const paginate = (searchParams.get("paginate") || "").toLowerCase() === "true";
+    const pageParam = searchParams.get("page");
+    const pageSizeParam = searchParams.get("pageSize");
+    const page = Math.max(1, Number.parseInt(String(pageParam || '1'), 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number.parseInt(String(pageSizeParam || '10'), 10) || 10));
     
     // If ID is provided, fetch a specific appointment
     if (id) {
@@ -104,6 +109,41 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // When pagination is requested, compute total and apply skip/take
+    if (paginate) {
+      const total = await prisma.appointment.count({ where });
+      const items = await prisma.appointment.findMany({
+        where,
+        include: {
+          customer: {
+            select: {
+              id: true,
+              name: true,
+              whatsappNumber: true,
+            },
+          },
+          appointmentPlace: {
+            include: {
+              appointmentType: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          appointmentDate: 'desc',
+        },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      });
+
+      return NextResponse.json({ items, total, page, pageSize });
+    }
+
+    // Default (non-paginated) - maintain backward compatibility, but sort by most recent first
     const appointments = await prisma.appointment.findMany({
       where,
       include: {
@@ -126,7 +166,7 @@ export async function GET(request: NextRequest) {
         },
       },
       orderBy: {
-        appointmentDate: 'asc',
+        appointmentDate: 'desc',
       },
     });
 

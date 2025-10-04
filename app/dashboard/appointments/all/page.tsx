@@ -76,6 +76,11 @@ export default function AppointmentsPage() {
   const [filteredAppointmentPlaces, setFilteredAppointmentPlaces] = useState<AppointmentPlace[]>([]);
   const { toast } = useToast();
 
+  // Pagination state
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [total, setTotal] = useState<number>(0);
+
   const [formData, setFormData] = useState({
     customerId: '',
     appointmentPlaceId: '',
@@ -92,12 +97,23 @@ export default function AppointmentsPage() {
       if (selectedCustomer && selectedCustomer !== 'all') params.append('customerId', selectedCustomer);
       if (selectedAppointmentType && selectedAppointmentType !== 'all') params.append('appointmentTypeId', selectedAppointmentType);
       if (selectedStatus && selectedStatus !== 'all') params.append('status', selectedStatus);
+      // pagination & sorting (server sorts desc by default per API)
+      params.append('paginate', 'true');
+      params.append('page', String(page));
+      params.append('pageSize', String(pageSize));
       
       const response = await fetch(`/api/appointments?${params.toString()}`);
       if (!response.ok) throw new Error('Failed to fetch appointments');
       
       const data = await response.json();
-      setAppointments(data);
+      if (data && Array.isArray(data.items)) {
+        setAppointments(data.items);
+        setTotal(typeof data.total === 'number' ? data.total : 0);
+      } else {
+        // fallback for non-paginated structure
+        setAppointments(Array.isArray(data) ? data : []);
+        setTotal(Array.isArray(data) ? data.length : 0);
+      }
     } catch (error) {
       console.error('Error fetching appointments:', error);
       toast({
@@ -166,6 +182,11 @@ export default function AppointmentsPage() {
     fetchAppointments();
     fetchCustomers();
     fetchAppointmentTypes();
+  }, [selectedCustomer, selectedAppointmentType, selectedStatus, page, pageSize]);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setPage(1);
   }, [selectedCustomer, selectedAppointmentType, selectedStatus]);
 
   useEffect(() => {
@@ -585,6 +606,48 @@ export default function AppointmentsPage() {
                   ))}
                 </TableBody>
               </Table>
+              {/* Pagination Controls */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+                <div className="text-sm text-muted-foreground">
+                  {(() => {
+                    const start = (page - 1) * pageSize + 1;
+                    const end = Math.min(page * pageSize, total);
+                    return total > 0 ? `Showing ${start}-${end} of ${total}` : '';
+                  })()}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                  >
+                    Previous
+                  </Button>
+                  <div className="text-sm">Page {page}</div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+                      setPage((p) => Math.min(totalPages, p + 1));
+                    }}
+                    disabled={page >= Math.max(1, Math.ceil(total / pageSize))}
+                  >
+                    Next
+                  </Button>
+                  <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(parseInt(v)); setPage(1); }}>
+                    <SelectTrigger className="w-[110px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10 / page</SelectItem>
+                      <SelectItem value="20">20 / page</SelectItem>
+                      <SelectItem value="50">50 / page</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>
