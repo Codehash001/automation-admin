@@ -86,12 +86,6 @@ function DashboardContent({
       resource: 'customers',
     },
     {
-      name: 'Vendors',
-      href: '/dashboard/vendors',
-      icon: <Store  size={18} />,
-      resource: 'vendors',
-    },
-    {
       name: 'Orders',
       href: '/dashboard/orders',
       icon: <ShoppingCart size={18} />,
