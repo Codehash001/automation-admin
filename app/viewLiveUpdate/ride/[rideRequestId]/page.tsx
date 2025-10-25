@@ -301,7 +301,7 @@ export default function RideLiveViewPage({ params }: { params: { rideRequestId: 
     setIsLoading(true);
     try {
       // Use the same OTP endpoint as delivery
-      const response = await fetch(`/api/deliveries/otp`, {
+      const response = await fetch(`/api/driver-service/otp`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_API_KEY || ''}` },
         body: JSON.stringify({ otp: otpValue }),

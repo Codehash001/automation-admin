@@ -125,7 +125,7 @@ export default function RideLiveSharePage({ params }: { params: { rideRequestId:
     try {
       setIsLoading(true);
       // Use same OTP endpoint as delivery (shared OTP)
-      const response = await fetch(`/api/deliveries/otp`, {
+      const response = await fetch(`/api/driver-service/otp`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_API_KEY}` },
         body: JSON.stringify({ otp: otpToVerify }),
